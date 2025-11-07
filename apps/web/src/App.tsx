@@ -1,0 +1,335 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import './App.css';
+import { Editor } from '@monaco-editor/react';
+import TracePanel from './components/TracePanel';
+import ExamplesGallery from './components/ExamplesGallery';
+import { initPyodide, runPythonCode, type PyodideOutput } from './lib/pyodide';
+import { type Example } from './lib/examples';
+
+const DEFAULT_CODE = `# Welcome to datascience Table Tutor!
+# Click "Examples" to see pre-built visualizations
+
+from datascience import Table
+
+# Create a simple table
+students = Table().with_columns(
+    'Name', ['Alice', 'Bob', 'Charlie', 'Diana'],
+    'Age', [20, 21, 20, 22],
+    'Major', ['CS', 'Math', 'CS', 'Physics']
+)
+
+print("Original table:")
+students.show()
+
+# Try some operations
+cs_students = students.where('Major', 'CS')
+print("\\nCS students:")
+cs_students.show()
+
+# Select specific columns
+names_ages = students.select('Name', 'Age')
+print("\\nNames and ages:")
+names_ages.show()
+`;
+
+type PyodideStatus = 'loading' | 'ready' | 'error';
+
+function App() {
+  const [code, setCode] = useState(DEFAULT_CODE);
+  const [output, setOutput] = useState<PyodideOutput>({ stdout: '', stderr: '' });
+  const [isRunning, setIsRunning] = useState(false);
+  const [pyodideStatus, setPyodideStatus] = useState<PyodideStatus>('loading');
+  const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
+  const [showGallery, setShowGallery] = useState(false);
+  const [currentExample, setCurrentExample] = useState<string>('');
+  const editorRef = useRef<any>(null);
+
+  // Function to update permalink in URL (using query params for better sharing)
+  const updatePermalink = useCallback(() => {
+    try {
+      const params = new URLSearchParams();
+      params.set('code', encodeURIComponent(code));
+      if (currentExample) {
+        params.set('example', currentExample);
+      }
+      const newUrl = `${window.location.pathname}?${params.toString()}`;
+      // Update URL without reloading
+      window.history.replaceState(null, '', newUrl);
+    } catch (e) {
+      console.error('Failed to update permalink:', e);
+    }
+  }, [code, currentExample]);
+
+  // Load code from URL query params on mount
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const codeParam = params.get('code');
+      if (codeParam) {
+        const decodedCode = decodeURIComponent(codeParam);
+        setCode(decodedCode);
+        // Check if this is an example
+        const exampleId = params.get('example');
+        if (exampleId) {
+          setCurrentExample(exampleId);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to decode URL params:', e);
+    }
+  }, []);
+
+  // Update URL when code changes (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      updatePermalink();
+    }, 500); // Debounce URL updates
+
+    return () => clearTimeout(timeoutId);
+  }, [updatePermalink]);
+
+  // Initialize Pyodide on mount
+  useEffect(() => {
+    const init = async () => {
+      try {
+        setStatusMessage('Loading Pyodide...');
+        await initPyodide();
+        setStatusMessage('Installing datascience library...');
+        // Give it a moment to finish installation
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        setPyodideStatus('ready');
+        setStatusMessage('Ready to run Python code!');
+      } catch (error) {
+        setPyodideStatus('error');
+        setStatusMessage(error instanceof Error ? error.message : 'Failed to load Pyodide');
+        console.error('Pyodide initialization error:', error);
+      }
+    };
+
+    init();
+  }, []);
+
+  const handleShare = async () => {
+    try {
+      updatePermalink();
+      // Get the full URL with query params
+      const url = window.location.href;
+      await navigator.clipboard.writeText(url);
+      // Show temporary feedback
+      const originalText = statusMessage;
+      setStatusMessage('Link copied to clipboard!');
+      setTimeout(() => setStatusMessage(originalText), 2000);
+    } catch (e) {
+      console.error('Failed to copy link:', e);
+      setStatusMessage('Failed to copy link');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+    }
+  };
+
+  const handleExport = () => {
+    try {
+      const exportData = {
+        code,
+        trace: output.trace || [],
+        stdout: output.stdout || '',
+        stderr: output.stderr || '',
+        error: output.error || null,
+        exportedAt: new Date().toISOString(),
+        version: '1.0.0',
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `table-tutor-export-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Show feedback
+      const originalText = statusMessage;
+      setStatusMessage('Export downloaded!');
+      setTimeout(() => setStatusMessage(originalText), 2000);
+    } catch (e) {
+      console.error('Failed to export:', e);
+      setStatusMessage('Failed to export');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+    }
+  };
+
+  const handleRun = async () => {
+    if (pyodideStatus !== 'ready') {
+      setStatusMessage('Pyodide not ready yet. Please wait...');
+      return;
+    }
+
+    if (!code.trim()) {
+      setStatusMessage('Please enter some code to run');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+      return;
+    }
+
+    setIsRunning(true);
+    setOutput({ stdout: '', stderr: '' });
+    setStatusMessage('Running code...');
+    console.log('Running code:', code);
+
+    try {
+      const result = await runPythonCode(code);
+      console.log('Execution result:', result);
+      console.log('Trace captured:', result.trace);
+      setOutput(result);
+      
+      // Show helpful status message
+      if (result.trace && result.trace.length > 0) {
+        setStatusMessage(`✓ Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
+      } else if (result.error) {
+        setStatusMessage('✗ Execution error - see output below');
+      } else {
+        setStatusMessage('✓ Code executed (no Table operations detected)');
+      }
+      
+      // Reset status after a delay
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    } catch (error) {
+      console.error('Execution error:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      setOutput({
+        stdout: '',
+        stderr: '',
+        error: errorMessage,
+      });
+      setStatusMessage('✗ Execution failed - check output below');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Cmd/Ctrl + Enter to run
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault();
+      handleRun();
+    }
+  };
+
+  const handleSelectExample = (example: Example) => {
+    console.log('Loading example:', example.title);
+    console.log('Example code:', example.code);
+    setCode(example.code);
+    setCurrentExample(example.title);
+    setOutput({ stdout: '', stderr: '' }); // Clear previous output
+    // Update permalink immediately when example is selected
+    setTimeout(() => updatePermalink(), 100);
+  };
+
+  return (
+    <div className="app" onKeyDown={handleKeyDown}>
+        <header className="header">
+          <div className="header-left">
+            <h1><code className="header-code">datascience</code> Table Tutor</h1>
+            {currentExample && (
+              <span className="current-example">Example: {currentExample}</span>
+            )}
+          </div>
+        <div className="header-controls">
+          <span className={`status ${pyodideStatus}`}>
+            {statusMessage}
+          </span>
+          {output.trace && output.trace.length > 0 && (
+            <button
+              className="export-button"
+              onClick={handleExport}
+              disabled={pyodideStatus === 'loading'}
+              title="Export trace as JSON"
+            >
+              Export
+            </button>
+          )}
+          <button
+            className="share-button"
+            onClick={handleShare}
+            disabled={pyodideStatus === 'loading'}
+            title="Copy shareable link"
+          >
+            Share
+          </button>
+          <button
+            className="examples-button"
+            onClick={() => setShowGallery(true)}
+            disabled={pyodideStatus === 'loading'}
+          >
+            Examples
+          </button>
+          <button
+            className="run-button"
+            onClick={handleRun}
+            disabled={pyodideStatus !== 'ready' || isRunning}
+          >
+            {isRunning ? 'Running...' : 'Run'}
+          </button>
+        </div>
+      </header>
+
+      <div className="main-content jupyter-style">
+        {/* Left: Code Notebook */}
+        <div className="notebook-panel">
+          <div className="notebook-header">
+            <div className="notebook-info">
+              <span className="notebook-name">Code Notebook</span>
+            </div>
+            <div className="notebook-hint">
+              Press Run or Cmd+Enter to execute
+            </div>
+          </div>
+          
+          <div className="notebook-cells">
+            <div className="notebook-cell-simple">
+              <div className="cell-editor-simple">
+                <Editor
+                  height="100%"
+                  defaultLanguage="python"
+                  value={code}
+                  onChange={(value) => setCode(value || '')}
+                  onMount={(editor) => {
+                    editorRef.current = editor;
+                    editor.focus();
+                  }}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    readOnly: isRunning,
+                    tabSize: 4,
+                    wordWrap: 'on',
+                    padding: { top: 16, bottom: 16 },
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Visualization */}
+        <TracePanel output={output} />
+      </div>
+
+      {/* Examples Gallery Modal */}
+      {showGallery && (
+        <ExamplesGallery
+          onSelectExample={handleSelectExample}
+          onClose={() => setShowGallery(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;
+

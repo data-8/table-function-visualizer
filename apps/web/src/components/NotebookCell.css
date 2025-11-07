@@ -1,0 +1,126 @@
+.notebook-cell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  transition: all 0.2s;
+  background-color: #161b22;
+  overflow: hidden;
+}
+
+.notebook-cell.focused {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.2);
+}
+
+.cell-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background-color: #1c2128;
+  border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
+  z-index: 10;
+  position: relative;
+}
+
+.cell-label {
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  color: #10b981;
+  font-weight: 700;
+  min-width: 4rem;
+}
+
+.cell-actions {
+  display: flex;
+  gap: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.notebook-cell:hover .cell-actions {
+  opacity: 1;
+}
+
+.cell-action-btn {
+  background-color: #374151;
+  border: 1px solid #4b5563;
+  color: #e5e7eb;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.cell-action-btn:hover {
+  background-color: #4b5563;
+  color: #ffffff;
+  border-color: #6b7280;
+}
+
+.cell-action-btn.delete:hover {
+  background-color: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+.cell-editor {
+  flex: 1;
+  position: relative;
+  background-color: #0d1117;
+  z-index: 1;
+  min-height: 400px;
+}
+
+/* Ensure Monaco editor fills the space properly */
+.cell-editor > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Remove any overlays or pseudo-elements that might block the editor */
+.cell-editor::before,
+.cell-editor::after,
+.notebook-cell::before,
+.notebook-cell::after {
+  display: none !important;
+  content: none !important;
+}
+
+.add-cell-below {
+  text-align: center;
+  padding: 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.notebook-cell:hover .add-cell-below {
+  opacity: 1;
+}
+
+.add-cell-btn {
+  background: none;
+  border: 1px dashed #6b7280;
+  color: #d1d5db;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.2s;
+  width: 100%;
+  font-weight: 500;
+}
+
+.add-cell-btn:hover {
+  border-color: #60a5fa;
+  color: #93c5fd;
+  background-color: rgba(96, 165, 250, 0.1);
+}
+
+/* Force dark mode always */
+

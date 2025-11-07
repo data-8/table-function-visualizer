@@ -1,0 +1,125 @@
+import { useState, useEffect } from 'react';
+import type { TraceRecord } from '../lib/pyodide';
+import DataTransformation from './DataTransformation';
+import './StepSlideshow.css';
+
+interface StepSlideshowProps {
+  trace: TraceRecord[];
+}
+
+export default function StepSlideshow({ trace }: StepSlideshowProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+
+  // Reset to first step when trace changes
+  useEffect(() => {
+    setCurrentStep(0);
+  }, [trace]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        goToPrevious();
+      } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        goToNext();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentStep, trace.length]);
+
+  const goToPrevious = () => {
+    setCurrentStep(prev => Math.max(0, prev - 1));
+  };
+
+  const goToNext = () => {
+    setCurrentStep(prev => Math.min(trace.length - 1, prev + 1));
+  };
+
+  if (!trace || trace.length === 0) {
+    return null;
+  }
+
+  const record = trace[currentStep];
+  const isFirst = currentStep === 0;
+  const isLast = currentStep === trace.length - 1;
+  const hasValidData = record.input && record.output;
+
+  return (
+    <div className="step-slideshow">
+      {/* Step Header */}
+      <div className="slideshow-header">
+        <div className="step-indicator">
+          <span className="step-badge">Step {record.step_id} of {trace.length}</span>
+        </div>
+        <div className="step-operation-title">
+          <code>{record.operation}()</code>
+        </div>
+      </div>
+
+      {/* Step Explanation */}
+      <div className="slideshow-explanation">
+        <span className="explanation-text">
+          {record.input?.num_rows === 0 && record.output?.num_rows > 0 && 
+           (record.operation === 'with_columns' || record.operation === 'with_column')
+            ? `Created table with ${record.output.num_columns} columns and ${record.output.num_rows} rows`
+            : record.explanation}
+        </span>
+      </div>
+
+      {/* Visualization */}
+      {hasValidData && (
+        <div className="slideshow-visualization">
+          <DataTransformation
+            before={record.input}
+            after={record.output}
+            operation={record.operation}
+          />
+        </div>
+      )}
+
+      {/* Navigation Controls */}
+      <div className="slideshow-controls">
+        <button
+          className="nav-button prev"
+          onClick={goToPrevious}
+          disabled={isFirst}
+          title="Previous step"
+        >
+          <span className="arrow">‹</span>
+          <span className="nav-text">Previous</span>
+        </button>
+
+        <div className="step-dots">
+          {trace.map((_, index) => (
+            <button
+              key={index}
+              className={`dot ${index === currentStep ? 'active' : ''}`}
+              onClick={() => setCurrentStep(index)}
+              title={`Go to step ${index + 1}`}
+            />
+          ))}
+        </div>
+
+        <button
+          className="nav-button next"
+          onClick={goToNext}
+          disabled={isLast}
+          title="Next step"
+        >
+          <span className="nav-text">Next</span>
+          <span className="arrow">›</span>
+        </button>
+      </div>
+
+      {/* Keyboard Hint */}
+      <div className="keyboard-hint">
+        Use arrow keys to navigate
+      </div>
+    </div>
+  );
+}
+
