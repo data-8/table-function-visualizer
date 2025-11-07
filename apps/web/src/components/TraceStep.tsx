@@ -4,12 +4,11 @@ import DataTransformation from './DataTransformation';
 
 interface TraceStepProps {
   record: TraceRecord;
-  isFirst: boolean;
   index: number;
 }
 
 // Determine if we should show arguments for this operation
-function shouldShowArgs(operation: string, args: any[]): boolean {
+function shouldShowArgs(operation: string): boolean {
   // Hide arguments for operations where they're too verbose or obvious from visualization
   const hideArgsFor = ['with_columns', 'with_column'];
   return !hideArgsFor.includes(operation);
@@ -61,7 +60,7 @@ function formatArgs(operation: string, args: any[]): string {
   return 'See table data below';
 }
 
-export default function TraceStep({ record, isFirst, index }: TraceStepProps) {
+export default function TraceStep({ record, index }: TraceStepProps) {
   const [expanded, setExpanded] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -96,7 +95,7 @@ export default function TraceStep({ record, isFirst, index }: TraceStepProps) {
       
       {expanded && hasValidData && (
         <div className="step-details">
-          {record.args && record.args.length > 0 && shouldShowArgs(record.operation, record.args) && (
+          {record.args && record.args.length > 0 && shouldShowArgs(record.operation) && (
             <div className="step-args">
               <strong>Arguments:</strong> <code>{formatArgs(record.operation, record.args)}</code>
             </div>

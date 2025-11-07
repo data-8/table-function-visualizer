@@ -26,10 +26,9 @@ export default function TraceTimeline({ trace }: TraceTimelineProps) {
       
       <div className="timeline-steps">
         {trace.map((record, index) => (
-          <TraceStep 
-            key={record.step_id} 
-            record={record} 
-            isFirst={index === 0}
+          <TraceStep
+            key={record.step_id}
+            record={record}
             index={index}
           />
         ))}
