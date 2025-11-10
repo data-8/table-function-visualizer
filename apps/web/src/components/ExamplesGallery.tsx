@@ -46,7 +46,8 @@ export default function ExamplesGallery({ onSelectExample, onClose }: ExamplesGa
 
         <div className="examples-grid">
           {filteredExamples.map(example => (
-            <div
+            <button
+              type="button"
               key={example.id}
               className="example-card"
               onClick={() => {
@@ -68,7 +69,7 @@ export default function ExamplesGallery({ onSelectExample, onClose }: ExamplesGa
                   categories.find(c => c.id === example.category)?.name
                 }</div>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 

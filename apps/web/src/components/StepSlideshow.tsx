@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { TraceRecord } from '../lib/pyodide';
 import DataTransformation from './DataTransformation';
 import './StepSlideshow.css';
@@ -9,6 +9,14 @@ interface StepSlideshowProps {
 
 export default function StepSlideshow({ trace }: StepSlideshowProps) {
   const [currentStep, setCurrentStep] = useState(0);
+
+  const goToPrevious = useCallback(() => {
+    setCurrentStep(prev => Math.max(0, prev - 1));
+  }, []);
+
+  const goToNext = useCallback(() => {
+    setCurrentStep(prev => Math.min(trace.length - 1, prev + 1));
+  }, [trace.length]);
 
   // Reset to first step when trace changes
   useEffect(() => {
@@ -29,15 +37,7 @@ export default function StepSlideshow({ trace }: StepSlideshowProps) {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentStep, trace.length]);
-
-  const goToPrevious = () => {
-    setCurrentStep(prev => Math.max(0, prev - 1));
-  };
-
-  const goToNext = () => {
-    setCurrentStep(prev => Math.min(trace.length - 1, prev + 1));
-  };
+  }, [goToNext, goToPrevious]);
 
   if (!trace || trace.length === 0) {
     return null;

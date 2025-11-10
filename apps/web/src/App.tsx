@@ -5,6 +5,7 @@ import TracePanel from './components/TracePanel';
 import ExamplesGallery from './components/ExamplesGallery';
 import { initPyodide, runPythonCode, type PyodideOutput } from './lib/pyodide';
 import { type Example } from './lib/examples';
+import type { editor as MonacoEditor } from 'monaco-editor';
 
 const DEFAULT_CODE = `# Welcome to datascience Table Tutor!
 # Click "Examples" to see pre-built visualizations
@@ -32,6 +33,8 @@ print("\\nNames and ages:")
 names_ages.show()
 `;
 
+const data8Logo = '/logo.png';
+
 type PyodideStatus = 'loading' | 'ready' | 'error';
 
 function App() {
@@ -42,7 +45,32 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+
+  const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
+    monaco.editor.defineTheme('data8-dark', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '9fb3ff' },
+        { token: 'comment.doc', foreground: '9fb3ff' },
+        { token: 'string', foreground: 'f6d98a' },
+        { token: 'keyword', foreground: '82aaff' },
+        { token: 'number', foreground: 'f6b178' }
+      ],
+      colors: {
+        'editor.background': '#04070f',
+        'editorGutter.background': '#04070f',
+        'editor.lineHighlightBackground': '#0b1933',
+        'editorLineNumber.foreground': '#a8b9ff',
+        'editorLineNumber.activeForeground': '#d6e2ff',
+        'editorCursor.foreground': '#f7f9fd',
+        'editor.selectionBackground': '#213c63',
+        'editorBracketMatch.background': '#1c2c4a',
+        'editorBracketMatch.border': '#3f6fb3'
+      }
+    });
+  };
 
   // Function to update permalink in URL (using query params for better sharing)
   const updatePermalink = useCallback(() => {
@@ -159,7 +187,7 @@ function App() {
     }
   };
 
-  const handleRun = async () => {
+  const handleRun = useCallback(async () => {
     if (pyodideStatus !== 'ready') {
       setStatusMessage('Pyodide not ready yet. Please wait...');
       return;
@@ -206,15 +234,19 @@ function App() {
     } finally {
       setIsRunning(false);
     }
-  };
+  }, [code, pyodideStatus]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    // Cmd/Ctrl + Enter to run
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-      e.preventDefault();
-      handleRun();
-    }
-  };
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+        event.preventDefault();
+        handleRun();
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [handleRun]);
 
   const handleSelectExample = (example: Example) => {
     console.log('Loading example:', example.title);
@@ -227,14 +259,22 @@ function App() {
   };
 
   return (
-    <div className="app" onKeyDown={handleKeyDown}>
-        <header className="header">
-          <div className="header-left">
-            <h1><code className="header-code">datascience</code> Table Tutor</h1>
-            {currentExample && (
-              <span className="current-example">Example: {currentExample}</span>
-            )}
+    <div className="app">
+      <header className="header">
+        <div className="header-left">
+          <div className="brand">
+            <img src={data8Logo} alt="Data 8 logo" className="brand-logo" />
+            <div className="brand-copy">
+              <span className="brand-title">Data 8 Table Tutor</span>
+              <span className="brand-subtitle">
+                Powered by <code className="header-code">datascience</code>
+              </span>
+            </div>
           </div>
+          {currentExample && (
+            <span className="current-example">Currently exploring: {currentExample}</span>
+          )}
+        </div>
         <div className="header-controls">
           <span className={`status ${pyodideStatus}`}>
             {statusMessage}
@@ -285,7 +325,7 @@ function App() {
               Press Run or Cmd+Enter to execute
             </div>
           </div>
-          
+
           <div className="notebook-cells">
             <div className="notebook-cell-simple">
               <div className="cell-editor-simple">
@@ -293,12 +333,13 @@ function App() {
                   height="100%"
                   defaultLanguage="python"
                   value={code}
+                  beforeMount={handleEditorWillMount}
                   onChange={(value) => setCode(value || '')}
                   onMount={(editor) => {
                     editorRef.current = editor;
                     editor.focus();
                   }}
-                  theme="vs-dark"
+                  theme="data8-dark"
                   options={{
                     minimap: { enabled: false },
                     fontSize: 14,

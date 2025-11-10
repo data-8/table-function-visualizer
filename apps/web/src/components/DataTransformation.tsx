@@ -147,7 +147,7 @@ export default function DataTransformation({ before, after, operation }: DataTra
   );
 }
 
-function formatValue(value: any): string {
+function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }

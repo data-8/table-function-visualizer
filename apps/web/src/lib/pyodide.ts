@@ -194,8 +194,8 @@ export interface PyodideOutput {
 export interface TraceRecord {
   step_id: number;
   operation: string;
-  args: any[];
-  kwargs: Record<string, any>;
+  args: unknown[];
+  kwargs: Record<string, unknown>;
   input: TableState;
   output: TableState;
   explanation: string;
@@ -205,7 +205,7 @@ export interface TableState {
   num_rows: number;
   num_columns: number;
   columns: string[];
-  preview: any[][];
+  preview: unknown[][];
   error?: string;
 }
 

@@ -25,13 +25,13 @@ export default function TracePanel({ output }: TracePanelProps) {
               <h3>Code Executed</h3>
               <div className="trace-note">
                 <strong>Tracing Not Working</strong>
-                The tracer didn't capture any operations. Check the console output below for details.
+                The tracer didn&apos;t capture any operations. Check the console output below for details.
               </div>
             </div>
           ) : (
             <div className="empty-state">
               <h3>Welcome to Table Tutor!</h3>
-              <p>Click "Examples" button above to see pre-built visualizations, or write your own Table operations.</p>
+              <p>Click &quot;Examples&quot; button above to see pre-built visualizations, or write your own Table operations.</p>
               <div className="example-hint">
                 <strong>Quick Example:</strong>
                 <pre>{`from datascience import Table
@@ -78,7 +78,7 @@ result = table.select('name')`}</pre>
                     <strong>Common Issues:</strong>
                     <ul>
                       <li>Check for typos in column names or method calls</li>
-                      <li>Ensure you're importing Table: <code>from datascience import Table</code></li>
+                      <li>Ensure you&apos;re importing Table: <code>from datascience import Table</code></li>
                       <li>Verify column names match those in your table</li>
                       <li>Check the console output above for more details</li>
                     </ul>

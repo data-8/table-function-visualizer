@@ -88,32 +88,6 @@ Open **http://localhost:5173** in your browser.
 
 Everything runs client-side - no server needed.
 
-## Project Status
-
-### Milestone 1 - Bootable Skeleton (COMPLETE)
-- Vite + React + TypeScript app
-- Pyodide integration
-- Monaco code editor
-- Python code execution
-
-### Milestone 2 - Table Operations (COMPLETE)
-- Built `table_tracer` with instrumentation
-- Automatic `datascience` installation from PyPI
-- Trace capture for all basic operations
-- Visual timeline with before/after previews
-- Smart explanations
-
-### Milestone 3 - Advanced Features (COMPLETE)
-- Group, pivot, join operations
-- Examples gallery with categories
-- Permalink sharing
-
-### Milestone 4 - Production Ready (COMPLETE)
-- Export functionality (JSON)
-- Service worker caching for offline support
-- Comprehensive documentation
-- Improved error messages and UX
-
 ## Tech Stack
 
 - **Frontend**: React 18, TypeScript, Vite

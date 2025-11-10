@@ -15,7 +15,7 @@ function shouldShowArgs(operation: string): boolean {
 }
 
 // Format arguments in a readable way
-function formatArgs(operation: string, args: any[]): string {
+function formatArgs(operation: string, args: unknown[]): string {
   // For operations like select, drop - just show column names
   if (['select', 'drop'].includes(operation)) {
     return args.filter(a => typeof a === 'string').join(', ');
@@ -75,10 +75,17 @@ export default function TraceStep({ record, index }: TraceStepProps) {
 
   const hasValidData = record.input && record.output && 
                        record.input.num_rows > 0 && record.output.num_rows >= 0;
+  const detailsId = `trace-step-${record.step_id}-details`;
 
   return (
     <div className={`trace-step ${isVisible ? 'fade-in' : 'fade-out'}`}>
-      <div className="step-header" onClick={() => setExpanded(!expanded)}>
+      <button
+        type="button"
+        className="step-header"
+        onClick={() => setExpanded(prev => !prev)}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+      >
         <div className="step-number">
           <span className="step-badge">Step {record.step_id}</span>
         </div>
@@ -86,7 +93,7 @@ export default function TraceStep({ record, index }: TraceStepProps) {
           <code>{record.operation}()</code>
         </div>
         <div className="step-toggle">{expanded ? '▼' : '▶'}</div>
-      </div>
+      </button>
       
       <div className="step-explanation">
         <span className="explanation-icon">💡</span>
@@ -94,7 +101,7 @@ export default function TraceStep({ record, index }: TraceStepProps) {
       </div>
       
       {expanded && hasValidData && (
-        <div className="step-details">
+        <div className="step-details" id={detailsId}>
           {record.args && record.args.length > 0 && shouldShowArgs(record.operation) && (
             <div className="step-args">
               <strong>Arguments:</strong> <code>{formatArgs(record.operation, record.args)}</code>

@@ -59,7 +59,7 @@ export default function TablePreview({ state, title }: TablePreviewProps) {
   );
 }
 
-function formatCell(value: any): string {
+function formatCell(value: unknown): string {
   if (value === null || value === undefined) {
     return '';
   }
