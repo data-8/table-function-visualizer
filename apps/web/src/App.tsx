@@ -33,8 +33,6 @@ print("\\nNames and ages:")
 names_ages.show()
 `;
 
-const data8Logo = '/logo.png';
-
 type PyodideStatus = 'loading' | 'ready' | 'error';
 
 function App() {
@@ -263,12 +261,9 @@ function App() {
       <header className="header">
         <div className="header-left">
           <div className="brand">
-            <img src={data8Logo} alt="Data 8 logo" className="brand-logo" />
-            <div className="brand-copy">
-              <span className="brand-title">Data 8 Table Tutor</span>
-              <span className="brand-subtitle">
-                Powered by <code className="header-code">datascience</code>
-              </span>
+            <div className="brand-title">
+              <code className="brand-code">datascience</code>
+              <span className="brand-name">Table Tutor</span>
             </div>
           </div>
           {currentExample && (

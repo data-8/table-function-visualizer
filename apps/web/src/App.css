@@ -29,6 +29,11 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  background: rgba(0, 20, 45, 0.85);
+  border: 1px solid rgba(59, 126, 161, 0.6);
+  border-radius: 12px;
+  padding: 0.75rem 1.1rem;
+  box-shadow: 0 12px 24px rgba(0, 14, 32, 0.55);
 }
 
 .brand-logo {
@@ -41,29 +46,14 @@
   box-shadow: 0 12px 26px rgba(255, 198, 70, 0.22);
 }
 
-.brand-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
 .brand-title {
-  font-size: 1.65rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  color: var(--text-primary);
-  text-shadow: 0 2px 6px rgba(0, 8, 18, 0.35);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
 }
 
-.brand-subtitle {
-  font-size: 0.95rem;
-  color: var(--text-primary);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  opacity: 0.9;
-}
-
-.header-code {
+.brand-code {
   font-family: 'Source Code Pro', 'Courier New', Courier, monospace;
   font-size: 1rem;
   font-weight: 600;
@@ -72,6 +62,14 @@
   padding: 0.12rem 0.4rem;
   border-radius: 4px;
   border: 1px solid rgba(255, 198, 70, 0.65);
+}
+
+.brand-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: #fefefe;
+  text-shadow: none;
 }
 
 .current-example {
@@ -114,14 +112,16 @@
 }
 
 .share-button {
-  background: rgba(12, 61, 115, 0.7);
-  border: 1px solid rgba(59, 126, 161, 0.65);
-  color: var(--text-primary);
+  background: linear-gradient(135deg, rgba(6, 48, 96, 0.92), rgba(3, 35, 72, 0.92));
+  border: 1px solid rgba(138, 198, 255, 0.65);
+  color: #f4fbff;
+  box-shadow: 0 10px 20px rgba(0, 18, 40, 0.5);
 }
 
 .share-button:hover:not(:disabled) {
-  background: rgba(18, 72, 124, 0.82);
-  border-color: rgba(255, 198, 70, 0.6);
+  background: linear-gradient(135deg, rgba(14, 72, 136, 0.95), rgba(6, 48, 96, 0.95));
+  border-color: rgba(191, 229, 255, 0.8);
+  color: #f4fbff;
 }
 
 .share-button:disabled {
@@ -156,31 +156,31 @@
 
 .status {
   font-size: 0.875rem;
-  color: var(--text-primary);
+  color: #e9f7ff;
   font-weight: 600;
-  background: #0b2f5c;
-  border: 1px solid rgba(59, 126, 161, 0.65);
+  background: rgba(4, 30, 64, 0.92);
+  border: 1px solid rgba(126, 196, 255, 0.68);
   padding: 0.45rem 0.95rem;
   border-radius: 999px;
-  backdrop-filter: blur(4px);
+  box-shadow: 0 12px 22px rgba(0, 16, 36, 0.45);
 }
 
 .status.ready {
-  color: #d0f6ff;
-  background: rgba(48, 124, 170, 0.55);
-  border-color: rgba(185, 242, 255, 0.5);
+  color: #ebfaff;
+  background: rgba(7, 60, 108, 0.94);
+  border-color: rgba(146, 216, 255, 0.75);
 }
 
 .status.error {
-  color: #ffd0cf;
-  background: rgba(147, 35, 35, 0.42);
-  border-color: rgba(220, 82, 82, 0.58);
+  color: #ffe8e6;
+  background: rgba(119, 23, 27, 0.88);
+  border-color: rgba(240, 118, 118, 0.7);
 }
 
 .status.loading {
-  color: var(--california-gold);
-  background: rgba(255, 198, 70, 0.2);
-  border-color: rgba(255, 198, 70, 0.6);
+  color: #1f1300;
+  background: linear-gradient(135deg, rgba(255, 198, 70, 0.95), rgba(196, 130, 14, 0.9));
+  border-color: rgba(255, 214, 118, 0.8);
 }
 
 .main-content {
