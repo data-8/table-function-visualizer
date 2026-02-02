@@ -5,6 +5,7 @@ import './App.css';
 import { Editor } from '@monaco-editor/react';
 import TracePanel from './components/TracePanel';
 import { StepCard } from './components/StepSlideshow';
+import { expandTraceToDisplaySteps } from './lib/displaySteps';
 import ExamplesGallery from './components/ExamplesGallery';
 import { initPyodide, runPythonCode, type PyodideOutput } from './lib/pyodide';
 import { type Example } from './lib/examples';
@@ -388,28 +389,31 @@ function App() {
       </div>
 
       {/* Hidden container for multi-step PDF export (off-screen, same layout as panel) */}
-      {isExportingPdf && output.trace && output.trace.length > 0 && (
-        <div
-          ref={exportContainerRef}
-          className="export-pdf-container"
-          style={{
-            position: 'absolute',
-            left: '-9999px',
-            top: 0,
-            width: 640,
-            zIndex: -1,
-          }}
-        >
-          {output.trace.map((record, i) => (
-            <StepCard
-              key={i}
-              record={record}
-              stepIndex={i}
-              totalSteps={output.trace!.length}
-            />
-          ))}
-        </div>
-      )}
+      {isExportingPdf && output.trace && output.trace.length > 0 && (() => {
+        const exportDisplaySteps = expandTraceToDisplaySteps(output.trace!);
+        return (
+          <div
+            ref={exportContainerRef}
+            className="export-pdf-container"
+            style={{
+              position: 'absolute',
+              left: '-9999px',
+              top: 0,
+              width: 640,
+              zIndex: -1,
+            }}
+          >
+            {exportDisplaySteps.map((step, i) => (
+              <StepCard
+                key={i}
+                step={step}
+                stepIndex={i}
+                totalSteps={exportDisplaySteps.length}
+              />
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Examples Gallery Modal */}
       {showGallery && (

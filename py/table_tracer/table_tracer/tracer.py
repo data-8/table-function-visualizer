@@ -144,7 +144,12 @@ def _make_explanation(operation: str, args: tuple, kwargs: dict,
         in_rows = input_state.get("num_rows", 0)
         out_rows = output_state.get("num_rows", 0)
         return f"Joined on '{col}'. Result has {out_rows} rows."
-    
+
+    elif operation == "pivot":
+        pivot_col = args[0] if args else "?"
+        rows_col = args[1] if len(args) > 1 else "?"
+        return f"Pivoted: '{pivot_col}' as columns, '{rows_col}' as rows."
+
     else:
         return f"Applied {operation}. Result: {output_state.get('num_rows', 0)} rows × {output_state.get('num_columns', 0)} columns."
 
@@ -158,6 +163,13 @@ def _trace_operation(operation_name: str):
             
             # Capture input state
             input_state = _capture_table_state(self)
+            
+            # For join: capture other (right) table before calling
+            other_table_state = None
+            if operation_name == "join" and len(args) >= 2:
+                other = args[1]
+                if hasattr(other, 'labels') and hasattr(other, 'num_rows'):
+                    other_table_state = _capture_table_state(other)
             
             # Call original method
             result = original_method(self, *args, **kwargs)
@@ -184,6 +196,8 @@ def _trace_operation(operation_name: str):
                     "output": output_state,
                     "explanation": explanation,
                 }
+                if other_table_state is not None:
+                    trace_record["other_table"] = other_table_state
                 _trace_log.append(trace_record)
             
             return result
@@ -229,6 +243,7 @@ def _patch_table_methods():
         "take",
         "group",
         "join",
+        "pivot",
     ]
     
     for op_name in operations:
