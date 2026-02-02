@@ -161,10 +161,6 @@ def _trace_operation(operation_name):
                     "output": output_state,
                     "explanation": explanation,
                 }
-                if operation_name == "join" and len(args) >= 2:
-                    other = args[1]
-                    if hasattr(other, "labels") and hasattr(other, "num_rows"):
-                        trace_record["other_table"] = _capture_table_state(other)
                 _trace_log.append(trace_record)
             
             return result
@@ -203,8 +199,6 @@ export interface TraceRecord {
   input: TableState;
   output: TableState;
   explanation: string;
-  /** For join: the right-hand table. */
-  other_table?: TableState;
 }
 
 export interface TableState {
