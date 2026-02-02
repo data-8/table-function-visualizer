@@ -103,7 +103,7 @@ export default function DataTransformation({ before, after, operation }: DataTra
       </div>
 
       {/* After State */}
-      <div className="transform-section after">
+      <div className={`transform-section after${isInitialization ? ' initialization-result' : ''}`}>
         <div className="section-header">
           <span className="section-title">After</span>
           <span className="section-info">{after.num_rows} rows × {after.num_columns} cols</span>

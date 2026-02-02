@@ -1,11 +1,13 @@
+import type { RefObject } from 'react';
 import type { PyodideOutput } from '../lib/pyodide';
 import StepSlideshow from './StepSlideshow';
 
 interface TracePanelProps {
   output: PyodideOutput;
+  slideshowRef?: RefObject<HTMLDivElement>;
 }
 
-export default function TracePanel({ output }: TracePanelProps) {
+export default function TracePanel({ output, slideshowRef }: TracePanelProps) {
   const hasTrace = output.trace && output.trace.length > 0;
   const hasOutput = output.stdout || output.stderr || output.error;
 
@@ -19,7 +21,7 @@ export default function TracePanel({ output }: TracePanelProps) {
         {/* Trace View FIRST */}
         <div className="trace-view">
           {hasTrace ? (
-            <StepSlideshow trace={output.trace!} />
+            <StepSlideshow ref={slideshowRef} trace={output.trace!} />
           ) : hasOutput ? (
             <div className="empty-state">
               <h3>Code Executed</h3>

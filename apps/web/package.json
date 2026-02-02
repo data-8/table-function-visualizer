@@ -10,17 +10,19 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
     "@monaco-editor/react": "^4.6.0",
-    "pyodide": "^0.26.4"
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.1.0",
+    "pyodide": "^0.26.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "@vitejs/plugin-react": "^4.3.1",
     "eslint": "^8.57.0",
     "eslint-plugin-jsx-a11y": "^6.8.0",
     "eslint-plugin-react": "^7.37.0",
@@ -29,4 +31,3 @@
     "vite": "^5.4.1"
   }
 }
-

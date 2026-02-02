@@ -1,13 +1,55 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, forwardRef } from 'react';
 import type { TraceRecord } from '../lib/pyodide';
 import DataTransformation from './DataTransformation';
 import './StepSlideshow.css';
+
+export interface StepCardProps {
+  record: TraceRecord;
+  stepIndex: number;
+  totalSteps: number;
+}
+
+/** Single-step content (header, explanation, DataTransformation). Used for display and PDF export. */
+export function StepCard({ record, stepIndex: _stepIndex, totalSteps }: StepCardProps) {
+  const hasValidData = record.input && record.output;
+  const explanation =
+    record.input?.num_rows === 0 &&
+    record.output?.num_rows > 0 &&
+    (record.operation === 'with_columns' || record.operation === 'with_column')
+      ? `Created table with ${record.output.num_columns} columns and ${record.output.num_rows} rows`
+      : record.explanation;
+
+  return (
+    <div className="step-slideshow step-card">
+      <div className="slideshow-header">
+        <div className="step-indicator">
+          <span className="step-badge">Step {record.step_id} of {totalSteps}</span>
+        </div>
+        <div className="step-operation-title">
+          <code>{record.operation}()</code>
+        </div>
+      </div>
+      <div className="slideshow-explanation">
+        <span className="explanation-text">{explanation}</span>
+      </div>
+      {hasValidData && (
+        <div className="slideshow-visualization">
+          <DataTransformation
+            before={record.input}
+            after={record.output}
+            operation={record.operation}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface StepSlideshowProps {
   trace: TraceRecord[];
 }
 
-export default function StepSlideshow({ trace }: StepSlideshowProps) {
+const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function StepSlideshow({ trace }, ref) {
   const [currentStep, setCurrentStep] = useState(0);
 
   const goToPrevious = useCallback(() => {
@@ -46,40 +88,10 @@ export default function StepSlideshow({ trace }: StepSlideshowProps) {
   const record = trace[currentStep];
   const isFirst = currentStep === 0;
   const isLast = currentStep === trace.length - 1;
-  const hasValidData = record.input && record.output;
 
   return (
-    <div className="step-slideshow">
-      {/* Step Header */}
-      <div className="slideshow-header">
-        <div className="step-indicator">
-          <span className="step-badge">Step {record.step_id} of {trace.length}</span>
-        </div>
-        <div className="step-operation-title">
-          <code>{record.operation}()</code>
-        </div>
-      </div>
-
-      {/* Step Explanation */}
-      <div className="slideshow-explanation">
-        <span className="explanation-text">
-          {record.input?.num_rows === 0 && record.output?.num_rows > 0 && 
-           (record.operation === 'with_columns' || record.operation === 'with_column')
-            ? `Created table with ${record.output.num_columns} columns and ${record.output.num_rows} rows`
-            : record.explanation}
-        </span>
-      </div>
-
-      {/* Visualization */}
-      {hasValidData && (
-        <div className="slideshow-visualization">
-          <DataTransformation
-            before={record.input}
-            after={record.output}
-            operation={record.operation}
-          />
-        </div>
-      )}
+    <div className="step-slideshow" ref={ref}>
+      <StepCard record={record} stepIndex={currentStep} totalSteps={trace.length} />
 
       {/* Navigation Controls */}
       <div className="slideshow-controls">
@@ -121,5 +133,7 @@ export default function StepSlideshow({ trace }: StepSlideshowProps) {
       </div>
     </div>
   );
-}
+});
+
+export default StepSlideshow;
 

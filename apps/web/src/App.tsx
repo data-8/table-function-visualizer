@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import './App.css';
 import { Editor } from '@monaco-editor/react';
 import TracePanel from './components/TracePanel';
+import { StepCard } from './components/StepSlideshow';
 import ExamplesGallery from './components/ExamplesGallery';
 import { initPyodide, runPythonCode, type PyodideOutput } from './lib/pyodide';
 import { type Example } from './lib/examples';
@@ -44,6 +47,9 @@ function App() {
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const slideshowRef = useRef<HTMLDivElement>(null);
+  const exportContainerRef = useRef<HTMLDivElement>(null);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
     monaco.editor.defineTheme('data8-dark', {
@@ -153,36 +159,61 @@ function App() {
   };
 
   const handleExport = () => {
-    try {
-      const exportData = {
-        code,
-        trace: output.trace || [],
-        stdout: output.stdout || '',
-        stderr: output.stderr || '',
-        error: output.error || null,
-        exportedAt: new Date().toISOString(),
-        version: '1.0.0',
-      };
-
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `table-tutor-export-${Date.now()}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // Show feedback
-      const originalText = statusMessage;
-      setStatusMessage('Export downloaded!');
-      setTimeout(() => setStatusMessage(originalText), 2000);
-    } catch (e) {
-      console.error('Failed to export:', e);
-      setStatusMessage('Failed to export');
+    if (!output.trace?.length) {
+      setStatusMessage('Nothing to export');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+      return;
     }
+    setStatusMessage('Generating PDF...');
+    setIsExportingPdf(true);
+    setTimeout(async () => {
+      try {
+        const container = exportContainerRef.current;
+        if (!container) {
+          setStatusMessage('Failed to export');
+          return;
+        }
+        const cards = container.querySelectorAll('.step-card');
+        if (cards.length === 0) {
+          setStatusMessage('Failed to export');
+          return;
+        }
+        let pdf: jsPDF | null = null;
+        for (let i = 0; i < cards.length; i++) {
+          const canvas = await html2canvas(cards[i] as HTMLElement, {
+            backgroundColor: null,
+            scale: 2,
+            useCORS: true,
+            logging: false,
+          });
+          const imgData = canvas.toDataURL('image/png');
+          const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+          if (i === 0) {
+            pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+          } else {
+            pdf!.addPage(undefined, orientation);
+          }
+          const pageW = pdf!.internal.pageSize.getWidth();
+          const pageH = pdf!.internal.pageSize.getHeight();
+          const scale = Math.min(pageW / canvas.width, pageH / canvas.height) * 0.95;
+          const w = canvas.width * scale;
+          const h = canvas.height * scale;
+          const x = (pageW - w) / 2;
+          const y = (pageH - h) / 2;
+          pdf!.addImage(imgData, 'PNG', x, y, w, h);
+        }
+        if (pdf) {
+          pdf.save(`table-tutor-export-${Date.now()}.pdf`);
+          setStatusMessage('Export downloaded!');
+        }
+      } catch (e) {
+        console.error('Failed to export:', e);
+        setStatusMessage('Failed to export');
+      } finally {
+        setIsExportingPdf(false);
+        setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+      }
+    }, 200);
   };
 
   const handleRun = useCallback(async () => {
@@ -279,7 +310,7 @@ function App() {
               className="export-button"
               onClick={handleExport}
               disabled={pyodideStatus === 'loading'}
-              title="Export trace as JSON"
+              title="Export visualization as PDF"
             >
               Export
             </button>
@@ -353,8 +384,32 @@ function App() {
         </div>
 
         {/* Right: Visualization */}
-        <TracePanel output={output} />
+        <TracePanel output={output} slideshowRef={slideshowRef} />
       </div>
+
+      {/* Hidden container for multi-step PDF export (off-screen, same layout as panel) */}
+      {isExportingPdf && output.trace && output.trace.length > 0 && (
+        <div
+          ref={exportContainerRef}
+          className="export-pdf-container"
+          style={{
+            position: 'absolute',
+            left: '-9999px',
+            top: 0,
+            width: 640,
+            zIndex: -1,
+          }}
+        >
+          {output.trace.map((record, i) => (
+            <StepCard
+              key={i}
+              record={record}
+              stepIndex={i}
+              totalSteps={output.trace!.length}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Examples Gallery Modal */}
       {showGallery && (
