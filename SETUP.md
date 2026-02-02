@@ -27,7 +27,7 @@ Navigate to the web app directory:
 cd apps/web
 ```
 
-Install dependencies using your preferred package manager:
+Install dependencies using your preferred package manager ie:
 
 **With npm:**
 ```bash
