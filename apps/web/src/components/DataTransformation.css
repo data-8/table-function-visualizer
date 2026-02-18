@@ -10,7 +10,7 @@
   transform: translateY(20px);
   transition: all 0.5s ease;
   border: 1px solid var(--border-subtle);
-  box-shadow: 0 24px 38px rgba(0, 18, 41, 0.6);
+  box-shadow: var(--shadow-panel);
 }
 
 .data-transformation.animated {
@@ -30,15 +30,15 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.65rem 0.85rem;
-  background: rgba(0, 52, 100, 0.7);
+  background: var(--bg-panel);
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
-  box-shadow: inset 0 0 0 1px rgba(0, 18, 41, 0.4);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
 .section-icon {
   font-size: 1.25rem;
-  color: var(--california-gold);
+  color: var(--accent);
 }
 
 .section-title {
@@ -58,7 +58,7 @@
 
 /* Data Table */
 .data-table-wrapper {
-  background: rgba(0, 26, 56, 0.82);
+  background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
   overflow: hidden;
@@ -66,7 +66,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 1px rgba(0, 18, 41, 0.38);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
 }
 
 .empty-table-placeholder {
@@ -79,7 +79,7 @@
   font-size: 3rem;
   margin-bottom: 0.5rem;
   opacity: 0.6;
-  text-shadow: 0 0 18px rgba(59, 126, 161, 0.35);
+  text-shadow: 0 0 18px var(--border-subtle);
 }
 
 .empty-text {
@@ -103,11 +103,11 @@
 }
 
 .data-table.compact th {
-  background-color: rgba(0, 52, 100, 0.72);
+  background-color: var(--bg-panel);
   padding: 0.4rem 0.6rem;
   text-align: left;
   font-weight: 600;
-  border-bottom: 2px solid rgba(253, 181, 21, 0.25);
+  border-bottom: 2px solid var(--border-strong);
   color: var(--text-primary);
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -116,12 +116,12 @@
 
 .data-table.compact td {
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid rgba(59, 126, 161, 0.25);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
 }
 
 .data-table.compact tr:hover td {
-  background-color: rgba(0, 56, 110, 0.38);
+  background-color: var(--accent-muted);
 }
 
 /* Highlight Changes */
@@ -138,14 +138,14 @@
 }
 
 .added-column {
-  background-color: rgba(0, 52, 100, 0.72) !important;
+  background-color: var(--bg-panel) !important;
   color: var(--text-primary) !important;
   font-weight: 700;
-  border-left: 3px solid rgba(255, 198, 70, 0.6);
+  border-left: 3px solid var(--accent);
 }
 
 .added-cell {
-  background-color: rgba(0, 26, 56, 0.82) !important;
+  background-color: var(--bg-card) !important;
   color: var(--text-primary) !important;
   font-weight: 500;
 }
@@ -153,18 +153,18 @@
 /* Step 1 (empty → with_columns): higher contrast so table is easy to read */
 .data-transformation .after.initialization-result .data-table.compact td {
   color: var(--text-primary);
-  background-color: rgba(0, 40, 80, 0.9);
-  border-bottom: 1px solid rgba(59, 126, 161, 0.4);
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .data-transformation .after.initialization-result .data-table.compact th {
-  background-color: rgba(0, 52, 100, 0.85);
+  background-color: var(--bg-panel);
   color: var(--text-primary);
-  border-bottom: 2px solid rgba(253, 181, 21, 0.35);
+  border-bottom: 2px solid var(--border-strong);
 }
 
 .data-transformation .after.initialization-result .data-table.compact tr:hover td {
-  background-color: rgba(0, 56, 110, 0.6);
+  background-color: var(--accent-muted);
 }
 
 .table-more {
@@ -172,7 +172,7 @@
   text-align: center;
   font-size: 0.75rem;
   color: var(--text-tertiary);
-  background-color: rgba(0, 26, 56, 0.82);
+  background-color: var(--bg-panel);
   font-style: italic;
 }
 
@@ -191,19 +191,19 @@
   font-size: 0.875rem;
   font-weight: 700;
   color: var(--text-primary);
-  background-color: rgba(0, 52, 100, 0.82);
+  background-color: var(--bg-panel);
   padding: 0.25rem 0.75rem;
   border-radius: 999px;
-  border: 1px solid rgba(255, 198, 70, 0.5);
+  border: 1px solid var(--border-strong);
   letter-spacing: 0.08em;
 }
 
 .transform-arrow {
   font-size: 3rem;
-  color: var(--california-gold);
+  color: var(--accent);
   font-weight: bold;
   animation: pulse 2s infinite;
-  text-shadow: 0 0 20px rgba(253, 181, 21, 0.45);
+  text-shadow: 0 0 20px var(--accent-muted);
 }
 
 @keyframes pulse {
@@ -229,7 +229,7 @@
   border-radius: 4px;
   font-weight: 600;
   text-align: center;
-  background-color: rgba(0, 52, 100, 0.5);
+  background-color: var(--bg-card);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
 }
@@ -241,8 +241,8 @@
 }
 
 .change-badge.added {
-  background-color: rgba(0, 52, 100, 0.6);
-  border-color: rgba(255, 198, 70, 0.5);
+  background-color: var(--bg-panel);
+  border-color: var(--accent);
   color: var(--text-primary);
 }
 

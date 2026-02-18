@@ -3,6 +3,7 @@
   line-height: 1.5;
   font-weight: 400;
   color-scheme: dark;
+  /* Berkeley palette (named, for reference) */
   --berkeley-blue: #003262;
   --berkeley-blue-dark: #00142a;
   --berkeley-blue-muted: #001a34;
@@ -19,12 +20,55 @@
   --text-primary: #f7f9fd;
   --text-secondary: #dbe4f3;
   --text-tertiary: #bac4d4;
+  /* Semantic theme variables (Berkeley defaults) */
+  --bg-app: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 20, 45, 0.96) 55%, #000a1a 100%);
+  --bg-header: linear-gradient(132deg, rgba(0, 24, 52, 0.97), rgba(0, 18, 41, 0.98));
+  --bg-panel: rgba(0, 24, 58, 0.88);
+  --bg-panel-muted: rgba(18, 56, 92, 0.74);
+  --bg-card: rgba(0, 36, 72, 0.6);
+  --bg-button: rgba(0, 41, 84, 0.75);
+  --accent: #ffc646;
+  --accent-muted: rgba(255, 198, 70, 0.28);
+  --shadow-panel: 0 20px 40px rgba(0, 16, 38, 0.45);
+  --shadow-card: 0 12px 24px rgba(0, 14, 32, 0.55);
+  --outline-focus: rgba(253, 181, 21, 0.6);
+  --button-text: var(--text-primary);
+  --accent-button-text: #1d1a10;
+  --editor-bg: #04070f;
   color: var(--text-primary);
-  background: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 20, 45, 0.96) 55%, #000a1a 100%);
+  background: var(--bg-app);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="jupyter"] {
+  color-scheme: light;
+  --text-primary: #212529;
+  --text-secondary: #495057;
+  --text-tertiary: #6c757d;
+  --border-strong: #f37726;
+  --border-subtle: #dee2e6;
+  --bg-app: linear-gradient(160deg, #fafafa 0%, #f5f5f5 45%, #eeeeee 100%);
+  --bg-header: linear-gradient(132deg, #ffffff, #fafafa);
+  --bg-panel: rgba(255, 255, 255, 0.95);
+  --bg-panel-muted: rgba(245, 245, 245, 0.95);
+  --bg-card: #ffffff;
+  --bg-button: #f37726;
+  --accent: #f37726;
+  --accent-muted: rgba(243, 119, 38, 0.2);
+  --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --outline-focus: rgba(243, 119, 38, 0.6);
+  --panel-elevated: rgba(255, 255, 255, 0.95);
+  --panel-muted: rgba(245, 245, 245, 0.95);
+  --california-gold: #f37726;
+  --button-text: #ffffff;
+  --accent-button-text: #ffffff;
+  --editor-bg: #fafafa;
+  color: var(--text-primary);
+  background: var(--bg-app);
 }
 
 * {
@@ -53,21 +97,21 @@ button {
   font-size: 1em;
   font-weight: 600;
   font-family: inherit;
-  background: rgba(0, 41, 84, 0.75);
-  color: var(--text-primary);
+  background: var(--bg-button);
+  color: var(--button-text);
   cursor: pointer;
   transition: transform 0.2s ease, border-color 0.25s, box-shadow 0.25s ease;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--california-gold);
-  box-shadow: 0 6px 18px rgba(255, 198, 70, 0.28);
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px var(--accent-muted);
   transform: translateY(-1px);
 }
 
 button:focus,
 button:focus-visible {
-  outline: 3px solid rgba(253, 181, 21, 0.6);
+  outline: 3px solid var(--outline-focus);
   outline-offset: 2px;
 }
 
@@ -76,9 +120,9 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Force dark mode always - no light mode */
+/* When no explicit theme, force dark (Berkeley) even if system prefers light */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="jupyter"]) {
     color-scheme: dark;
     color: var(--text-primary);
     background: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 31, 63, 0.95) 55%, #000d1f 100%);

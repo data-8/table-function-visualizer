@@ -19,6 +19,8 @@ interface NotebookCellsProps {
   onStop: () => void;
   onEditorMount?: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
   onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
+  /** Monaco theme name (e.g. data8-dark, data8-light) */
+  editorTheme?: 'data8-dark' | 'data8-light';
   readOnlyCode?: boolean;
   /** Called when user presses Shift+Enter in markdown cell to focus the code editor */
   onFocusCodeCell?: () => void;
@@ -51,6 +53,7 @@ export default function NotebookCells({
   onStop,
   onEditorMount,
   onEditorWillMount,
+  editorTheme = 'data8-dark',
   readOnlyCode = false,
   onFocusCodeCell,
 }: NotebookCellsProps) {
@@ -198,7 +201,7 @@ export default function NotebookCells({
               });
               editor.focus();
             }}
-            theme="data8-dark"
+            theme={editorTheme}
             options={{
               minimap: { enabled: false },
               fontSize: 14,

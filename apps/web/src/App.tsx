@@ -28,6 +28,9 @@ students.select('Name', 'Age')
 `;
 
 type PyodideStatus = 'loading' | 'ready' | 'error';
+type AppTheme = 'berkeley' | 'jupyter';
+
+const THEME_STORAGE_KEY = 'theme';
 
 function App() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
@@ -38,11 +41,26 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
+  const [theme, setTheme] = useState<AppTheme>(() =>
+    (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE_KEY) === 'jupyter')
+      ? 'jupyter'
+      : 'berkeley'
+  );
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const exportContainerRef = useRef<HTMLDivElement>(null);
   const runTokenRef = useRef(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  // Sync theme to DOM and localStorage
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      /* ignore */
+    }
+  }, [theme]);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
     monaco.editor.defineTheme('data8-dark', {
@@ -65,6 +83,28 @@ function App() {
         'editor.selectionBackground': '#213c63',
         'editorBracketMatch.background': '#1c2c4a',
         'editorBracketMatch.border': '#3f6fb3'
+      }
+    });
+    monaco.editor.defineTheme('data8-light', {
+      base: 'vs',
+      inherit: true,
+      rules: [
+        { token: 'comment', foreground: '6a737d' },
+        { token: 'comment.doc', foreground: '6a737d' },
+        { token: 'string', foreground: '032f62' },
+        { token: 'keyword', foreground: 'd73a49' },
+        { token: 'number', foreground: '005cc5' }
+      ],
+      colors: {
+        'editor.background': '#fafafa',
+        'editorGutter.background': '#fafafa',
+        'editor.lineHighlightBackground': '#f5f5f5',
+        'editorLineNumber.foreground': '#212529',
+        'editorLineNumber.activeForeground': '#f37726',
+        'editorCursor.foreground': '#212529',
+        'editor.selectionBackground': 'rgba(243, 119, 38, 0.2)',
+        'editorBracketMatch.background': 'rgba(243, 119, 38, 0.15)',
+        'editorBracketMatch.border': '#f37726'
       }
     });
   };
@@ -314,6 +354,24 @@ function App() {
           )}
         </div>
         <div className="header-controls">
+          <div className="theme-switcher" role="group" aria-label="Theme">
+            <button
+              type="button"
+              className={`theme-option ${theme === 'berkeley' ? 'active' : ''}`}
+              onClick={() => setTheme('berkeley')}
+              title="Berkeley theme"
+            >
+              Berkeley
+            </button>
+            <button
+              type="button"
+              className={`theme-option ${theme === 'jupyter' ? 'active' : ''}`}
+              onClick={() => setTheme('jupyter')}
+              title="Jupyter theme"
+            >
+              Jupyter
+            </button>
+          </div>
           <span className={`status ${pyodideStatus}`}>
             {statusMessage}
           </span>
@@ -387,6 +445,7 @@ function App() {
                 editorRef.current = editor;
               }}
               onEditorWillMount={handleEditorWillMount}
+              editorTheme={theme === 'jupyter' ? 'data8-light' : 'data8-dark'}
               readOnlyCode={isRunning}
               onFocusCodeCell={() => editorRef.current?.focus()}
             />

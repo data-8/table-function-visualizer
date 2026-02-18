@@ -11,11 +11,11 @@
 }
 
 .notebook-cell {
-  border: 1px solid rgba(59, 126, 161, 0.5);
+  border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: rgba(0, 15, 34, 0.82);
+  background: var(--bg-card);
   overflow: hidden;
-  box-shadow: 0 12px 28px rgba(0, 18, 41, 0.45);
+  box-shadow: var(--shadow-card);
 }
 
 .notebook-cell-markdown .cell-label,
@@ -30,8 +30,8 @@
 /* Markdown cell */
 .notebook-cell-markdown .cell-label {
   padding: 0.5rem 1rem;
-  background: rgba(0, 36, 72, 0.6);
-  border-bottom: 1px solid rgba(59, 126, 161, 0.3);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 /* Preview-only block (default): double-tap to edit */
@@ -40,14 +40,14 @@
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text-primary);
-  background: rgba(0, 22, 48, 0.6);
+  background: var(--bg-card);
   min-height: 60px;
   cursor: pointer;
   outline: none;
 }
 
 .markdown-preview-only:focus {
-  box-shadow: inset 0 0 0 2px rgba(255, 198, 70, 0.35);
+  box-shadow: inset 0 0 0 2px var(--border-strong);
 }
 
 .markdown-preview-only .markdown-preview-placeholder {
@@ -56,16 +56,16 @@
 }
 
 .markdown-preview-only p { margin: 0 0 0.5rem; }
-.markdown-preview-only h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: var(--california-gold); }
+.markdown-preview-only h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: var(--accent); }
 .markdown-preview-only h2 { font-size: 1.1rem; margin: 0.75rem 0 0.35rem; color: var(--text-primary); }
 .markdown-preview-only h3 { font-size: 1rem; margin: 0.5rem 0 0.25rem; }
 .markdown-preview-only ul, .markdown-preview-only ol { margin: 0.25rem 0 0.5rem 1rem; padding-left: 1rem; }
 .markdown-preview-only li { margin-bottom: 0.2rem; }
-.markdown-preview-only code { background: rgba(255, 198, 70, 0.12); padding: 0.15rem 0.35rem; border-radius: 4px; font-family: 'Source Code Pro', monospace; font-size: 0.85em; color: var(--california-gold); border: 1px solid rgba(255, 198, 70, 0.25); }
-.markdown-preview-only pre { margin: 0.5rem 0; padding: 0.75rem; background: rgba(0, 15, 34, 0.9); border-radius: 6px; border: 1px solid rgba(59, 126, 161, 0.35); overflow-x: auto; font-size: 0.8rem; }
+.markdown-preview-only code { background: var(--accent-muted); padding: 0.15rem 0.35rem; border-radius: 4px; font-family: 'Source Code Pro', monospace; font-size: 0.85em; color: var(--accent); border: 1px solid var(--border-strong); }
+.markdown-preview-only pre { margin: 0.5rem 0; padding: 0.75rem; background: var(--bg-panel); border-radius: 6px; border: 1px solid var(--border-subtle); overflow-x: auto; font-size: 0.8rem; }
 .markdown-preview-only pre code { background: none; padding: 0; border: none; }
-.markdown-preview-only a { color: rgba(146, 216, 255, 0.95); text-decoration: underline; }
-.markdown-preview-only a:hover { color: var(--california-gold); }
+.markdown-preview-only a { color: var(--text-secondary); text-decoration: underline; }
+.markdown-preview-only a:hover { color: var(--accent); }
 
 /* KaTeX math: readable on dark background */
 .markdown-preview-only .katex,
@@ -97,7 +97,7 @@
 }
 
 .markdown-edit-mode .markdown-input {
-  border: 1px solid rgba(59, 126, 161, 0.35);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   border-right: none;
 }
@@ -125,9 +125,9 @@
   font-size: 0.875rem;
   line-height: 1.5;
   color: var(--text-primary);
-  background: rgba(4, 7, 15, 0.95);
+  background: var(--editor-bg);
   border: none;
-  border-right: 1px solid rgba(59, 126, 161, 0.35);
+  border-right: 1px solid var(--border-subtle);
   resize: vertical;
   outline: none;
 }
@@ -137,7 +137,7 @@
 }
 
 .markdown-input:focus {
-  box-shadow: inset 0 0 0 2px rgba(255, 198, 70, 0.35);
+  box-shadow: inset 0 0 0 2px var(--border-strong);
 }
 
 .markdown-preview {
@@ -145,7 +145,7 @@
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text-primary);
-  background: rgba(0, 22, 48, 0.6);
+  background: var(--bg-card);
   overflow-y: auto;
   max-height: 280px;
 }
@@ -163,7 +163,7 @@
 .markdown-preview h1 {
   font-size: 1.25rem;
   margin: 0 0 0.5rem;
-  color: var(--california-gold);
+  color: var(--accent);
 }
 
 .markdown-preview h2 {
@@ -188,21 +188,21 @@
 }
 
 .markdown-preview code {
-  background: rgba(255, 198, 70, 0.12);
+  background: var(--accent-muted);
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
   font-family: 'Source Code Pro', monospace;
   font-size: 0.85em;
-  color: var(--california-gold);
-  border: 1px solid rgba(255, 198, 70, 0.25);
+  color: var(--accent);
+  border: 1px solid var(--border-strong);
 }
 
 .markdown-preview pre {
   margin: 0.5rem 0;
   padding: 0.75rem;
-  background: rgba(0, 15, 34, 0.9);
+  background: var(--bg-panel);
   border-radius: 6px;
-  border: 1px solid rgba(59, 126, 161, 0.35);
+  border: 1px solid var(--border-subtle);
   overflow-x: auto;
   font-size: 0.8rem;
 }
@@ -214,12 +214,12 @@
 }
 
 .markdown-preview a {
-  color: rgba(146, 216, 255, 0.95);
+  color: var(--text-secondary);
   text-decoration: underline;
 }
 
 .markdown-preview a:hover {
-  color: var(--california-gold);
+  color: var(--accent);
 }
 
 /* Code cell */
@@ -236,8 +236,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 0.4rem 0.75rem;
-  background: rgba(0, 36, 72, 0.65);
-  border-bottom: 1px solid rgba(59, 126, 161, 0.35);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .cell-actions {
@@ -264,14 +264,14 @@
 }
 
 .cell-btn-run {
-  background: linear-gradient(132deg, rgba(255, 198, 70, 0.9), rgba(196, 130, 14, 0.9));
-  color: #1d1a10;
-  border-color: rgba(255, 198, 70, 0.6);
+  background: var(--accent);
+  color: var(--accent-button-text);
+  border-color: var(--accent);
 }
 
 .cell-btn-run:hover:not(:disabled) {
-  background: linear-gradient(132deg, rgba(255, 207, 104, 1), rgba(200, 140, 26, 1));
-  border-color: rgba(255, 214, 118, 0.8);
+  filter: brightness(1.08);
+  border-color: var(--accent);
 }
 
 .cell-btn-stop {
@@ -295,5 +295,5 @@
 .code-cell-editor .monaco-editor,
 .code-cell-editor .monaco-editor-background,
 .code-cell-editor .monaco-editor .margin {
-  background-color: #04070f !important;
+  background-color: var(--editor-bg) !important;
 }
