@@ -67,6 +67,21 @@
 .markdown-preview-only a { color: rgba(146, 216, 255, 0.95); text-decoration: underline; }
 .markdown-preview-only a:hover { color: var(--california-gold); }
 
+/* KaTeX math: readable on dark background */
+.markdown-preview-only .katex,
+.markdown-preview-only .katex-display {
+  color: var(--text-primary);
+}
+
+.markdown-preview-only .katex .mord,
+.markdown-preview-only .katex .mop,
+.markdown-preview-only .katex .mbin,
+.markdown-preview-only .katex .mrel,
+.markdown-preview-only .katex .minner,
+.markdown-preview-only .katex .mpunct {
+  color: inherit;
+}
+
 /* Edit mode: textarea + Render button */
 .markdown-cell-inner.markdown-edit-mode {
   display: flex;

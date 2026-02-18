@@ -1,6 +1,9 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
 import { Editor } from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import * as monaco from 'monaco-editor';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import './NotebookCells.css';
@@ -117,7 +120,9 @@ export default function NotebookCells({
             aria-label="Double-tap or press Enter to edit markdown"
           >
             {markdown.trim() ? (
-              <ReactMarkdown>{markdown}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                {markdown}
+              </ReactMarkdown>
             ) : (
               <span className="markdown-preview-placeholder">Double-tap to add markdown</span>
             )}
