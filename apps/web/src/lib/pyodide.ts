@@ -4,6 +4,16 @@ let pyodideInstance: PyodideInterface | null = null;
 let loadingPromise: Promise<PyodideInterface> | null = null;
 let wheelsInstalled = false;
 
+/**
+ * Tear down the current Pyodide runtime so the next initPyodide() does a full reload.
+ * In-flight runPythonCode cannot be interrupted; callers must ignore stale results via run tokens.
+ */
+export function stopExecutionHard(): void {
+  pyodideInstance = null;
+  loadingPromise = null;
+  wheelsInstalled = false;
+}
+
 // Inline tracer code - embedded directly
 const INLINE_TRACER_CODE = `
 _trace_enabled = False

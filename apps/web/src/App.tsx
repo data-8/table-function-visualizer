@@ -2,43 +2,35 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import './App.css';
-import { Editor } from '@monaco-editor/react';
 import TracePanel from './components/TracePanel';
+import NotebookCells from './components/NotebookCells';
 import { StepCard } from './components/StepSlideshow';
 import ExamplesGallery from './components/ExamplesGallery';
-import { initPyodide, runPythonCode, type PyodideOutput } from './lib/pyodide';
+import { initPyodide, runPythonCode, stopExecutionHard, type PyodideOutput } from './lib/pyodide';
 import { type Example } from './lib/examples';
 import type { editor as MonacoEditor } from 'monaco-editor';
 
-const DEFAULT_CODE = `# Welcome to datascience Table Tutor!
-# Click "Examples" to see pre-built visualizations
+const DEFAULT_MARKDOWN = `## How to use this notebook
 
-from datascience import Table
+- **Markdown cell (this cell):** Double-tap or double-click to edit. Use **Shift+Enter** or the **Render** button to see the rendered version and (with Shift+Enter) move to the code cell.
+- **Code cell:** Write Python using \`datascience.Table\`. Press **Run** or **Cmd+Enter** to execute. The right panel shows step-by-step table operations.
+- **Visualization:** After running, use the arrows to step through operations and **Export** to save as PDF or **Share** to copy a link.`;
 
-# Create a simple table
+const DEFAULT_CODE = `from datascience import Table
+
+# See the markdown cell above for instructions.
+# Example: create a table and run an operation to see the visualization.
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana'],
-    'Age', [20, 21, 20, 22],
-    'Major', ['CS', 'Math', 'CS', 'Physics']
+    'Name', ['Alice', 'Bob', 'Charlie'],
+    'Age', [20, 21, 22]
 )
-
-print("Original table:")
-students.show()
-
-# Try some operations
-cs_students = students.where('Major', 'CS')
-print("\\nCS students:")
-cs_students.show()
-
-# Select specific columns
-names_ages = students.select('Name', 'Age')
-print("\\nNames and ages:")
-names_ages.show()
+students.select('Name', 'Age')
 `;
 
 type PyodideStatus = 'loading' | 'ready' | 'error';
 
 function App() {
+  const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [code, setCode] = useState(DEFAULT_CODE);
   const [output, setOutput] = useState<PyodideOutput>({ stdout: '', stderr: '' });
   const [isRunning, setIsRunning] = useState(false);
@@ -49,6 +41,7 @@ function App() {
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const exportContainerRef = useRef<HTMLDivElement>(null);
+  const runTokenRef = useRef(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
@@ -81,18 +74,20 @@ function App() {
     try {
       const params = new URLSearchParams();
       params.set('code', encodeURIComponent(code));
+      if (markdown.trim() && markdown !== DEFAULT_MARKDOWN) {
+        params.set('md', encodeURIComponent(markdown));
+      }
       if (currentExample) {
         params.set('example', currentExample);
       }
       const newUrl = `${window.location.pathname}?${params.toString()}`;
-      // Update URL without reloading
       window.history.replaceState(null, '', newUrl);
     } catch (e) {
       console.error('Failed to update permalink:', e);
     }
-  }, [code, currentExample]);
+  }, [code, markdown, currentExample]);
 
-  // Load code from URL query params on mount
+  // Load code (and optional markdown) from URL query params on mount
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -100,11 +95,18 @@ function App() {
       if (codeParam) {
         const decodedCode = decodeURIComponent(codeParam);
         setCode(decodedCode);
-        // Check if this is an example
-        const exampleId = params.get('example');
-        if (exampleId) {
-          setCurrentExample(exampleId);
+      }
+      const mdParam = params.get('md');
+      if (mdParam) {
+        try {
+          setMarkdown(decodeURIComponent(mdParam));
+        } catch {
+          /* ignore */
         }
+      }
+      const exampleId = params.get('example');
+      if (exampleId) {
+        setCurrentExample(exampleId);
       }
     } catch (e) {
       console.error('Failed to decode URL params:', e);
@@ -228,18 +230,14 @@ function App() {
       return;
     }
 
+    const token = ++runTokenRef.current;
     setIsRunning(true);
-    setOutput({ stdout: '', stderr: '' });
     setStatusMessage('Running code...');
-    console.log('Running code:', code);
 
     try {
       const result = await runPythonCode(code);
-      console.log('Execution result:', result);
-      console.log('Trace captured:', result.trace);
+      if (token !== runTokenRef.current) return;
       setOutput(result);
-      
-      // Show helpful status message
       if (result.trace && result.trace.length > 0) {
         setStatusMessage(`✓ Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
       } else if (result.error) {
@@ -247,21 +245,15 @@ function App() {
       } else {
         setStatusMessage('✓ Code executed (no Table operations detected)');
       }
-      
-      // Reset status after a delay
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } catch (error) {
-      console.error('Execution error:', error);
+      if (token !== runTokenRef.current) return;
       const errorMessage = error instanceof Error ? error.message : String(error);
-      setOutput({
-        stdout: '',
-        stderr: '',
-        error: errorMessage,
-      });
+      setOutput({ stdout: '', stderr: '', error: errorMessage });
       setStatusMessage('✗ Execution failed - check output below');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } finally {
-      setIsRunning(false);
+      if (token === runTokenRef.current) setIsRunning(false);
     }
   }, [code, pyodideStatus]);
 
@@ -276,6 +268,26 @@ function App() {
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
   }, [handleRun]);
+
+  const handleStop = useCallback(() => {
+    if (!isRunning) return;
+    runTokenRef.current = 0;
+    setStatusMessage('Stopping...');
+    stopExecutionHard();
+    setIsRunning(false);
+    setOutput({ stdout: '', stderr: '' });
+    setStatusMessage('Stopped. Reinitializing...');
+    (async () => {
+      try {
+        await initPyodide();
+        setPyodideStatus('ready');
+        setStatusMessage('Ready to run Python code!');
+      } catch (e) {
+        setPyodideStatus('error');
+        setStatusMessage('Failed to reinitialize after stop');
+      }
+    })();
+  }, [isRunning]);
 
   const handleSelectExample = (example: Example) => {
     console.log('Loading example:', example.title);
@@ -334,52 +346,50 @@ function App() {
             className="run-button"
             onClick={handleRun}
             disabled={pyodideStatus !== 'ready' || isRunning}
+            title="Run code cell"
           >
             {isRunning ? 'Running...' : 'Run'}
+          </button>
+          <button
+            className="stop-button"
+            onClick={handleStop}
+            disabled={!isRunning}
+            title="Stop execution"
+          >
+            Stop
           </button>
         </div>
       </header>
 
       <div className="main-content jupyter-style">
-        {/* Left: Code Notebook */}
+        {/* Left: Notebook (markdown + code cells) */}
         <div className="notebook-panel">
           <div className="notebook-header">
             <div className="notebook-info">
-              <span className="notebook-name">Code Notebook</span>
+              <span className="notebook-name">Notebook</span>
             </div>
             <div className="notebook-hint">
-              Press Run or Cmd+Enter to execute
+              Cmd+Enter to run code cell
             </div>
           </div>
 
-          <div className="notebook-cells">
-            <div className="notebook-cell-simple">
-              <div className="cell-editor-simple">
-                <Editor
-                  height="100%"
-                  defaultLanguage="python"
-                  value={code}
-                  beforeMount={handleEditorWillMount}
-                  onChange={(value) => setCode(value || '')}
-                  onMount={(editor) => {
-                    editorRef.current = editor;
-                    editor.focus();
-                  }}
-                  theme="data8-dark"
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    readOnly: isRunning,
-                    tabSize: 4,
-                    wordWrap: 'on',
-                    padding: { top: 16, bottom: 16 },
-                  }}
-                />
-              </div>
-            </div>
+          <div className="notebook-cells-wrapper">
+            <NotebookCells
+              markdown={markdown}
+              onMarkdownChange={setMarkdown}
+              code={code}
+              onCodeChange={setCode}
+              isRunning={isRunning}
+              pyodideReady={pyodideStatus === 'ready'}
+              onRun={handleRun}
+              onStop={handleStop}
+              onEditorMount={(editor) => {
+                editorRef.current = editor;
+              }}
+              onEditorWillMount={handleEditorWillMount}
+              readOnlyCode={isRunning}
+              onFocusCodeCell={() => editorRef.current?.focus()}
+            />
           </div>
         </div>
 

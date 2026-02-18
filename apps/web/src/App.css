@@ -147,11 +147,30 @@
   border: 1px solid rgba(255, 198, 70, 0.85);
   font-weight: 700;
   text-shadow: 0 1px 2px rgba(255, 255, 255, 0.18);
+  min-width: 6rem;
 }
 
 .run-button:hover:not(:disabled) {
   background: linear-gradient(132deg, rgba(255, 207, 104, 1), rgba(200, 140, 26, 1));
   border-color: rgba(255, 214, 118, 0.9);
+}
+
+.stop-button {
+  background: rgba(180, 60, 60, 0.9);
+  color: #fff;
+  border: 1px solid rgba(220, 82, 82, 0.7);
+  font-weight: 700;
+}
+
+.stop-button:hover:not(:disabled) {
+  background: rgba(200, 70, 70, 0.95);
+  border-color: rgba(240, 118, 118, 0.8);
+  color: #fff;
+}
+
+.stop-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .status {
@@ -163,6 +182,8 @@
   padding: 0.45rem 0.95rem;
   border-radius: 999px;
   box-shadow: 0 12px 22px rgba(0, 16, 36, 0.45);
+  min-width: 14rem;
+  text-align: center;
 }
 
 .status.ready {
@@ -201,6 +222,14 @@
   flex-direction: column;
   border-right: 2px solid rgba(255, 198, 70, 0.3);
   background: var(--panel-elevated);
+  overflow: hidden;
+}
+
+.notebook-cells-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 

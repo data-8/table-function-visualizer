@@ -10,7 +10,7 @@ export interface StepCardProps {
 }
 
 /** Single-step content (header, explanation, DataTransformation). Used for display and PDF export. */
-export function StepCard({ record, stepIndex: _stepIndex, totalSteps }: StepCardProps) {
+export function StepCard({ record, stepIndex, totalSteps }: StepCardProps) {
   const hasValidData = record.input && record.output;
   const explanation =
     record.input?.num_rows === 0 &&
@@ -23,7 +23,7 @@ export function StepCard({ record, stepIndex: _stepIndex, totalSteps }: StepCard
     <div className="step-slideshow step-card">
       <div className="slideshow-header">
         <div className="step-indicator">
-          <span className="step-badge">Step {record.step_id} of {totalSteps}</span>
+          <span className="step-badge">Step {stepIndex + 1} of {totalSteps}</span>
         </div>
         <div className="step-operation-title">
           <code>{record.operation}()</code>
