@@ -59,22 +59,92 @@ export default function NotebookCells({
 }: NotebookCellsProps) {
   const markdownTextareaRef = useRef<HTMLTextAreaElement>(null);
   const codeCellEditorRef = useRef<HTMLDivElement>(null);
+  const notebookContainerRef = useRef<HTMLDivElement>(null);
   const [isMarkdownEditing, setIsMarkdownEditing] = useState(false);
-  const [codeEditorHeight, setCodeEditorHeight] = useState(280);
+  const [codeEditorHeight, setCodeEditorHeight] = useState(120);
+  const hasUserInteractedRef = useRef(false);
+
+  const resizeMarkdownTextarea = useCallback(() => {
+    const ta = markdownTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+    
+    // Auto-scroll to keep cursor in view when content expands (only after user has interacted)
+    if (hasUserInteractedRef.current && document.activeElement === ta) {
+      requestAnimationFrame(() => {
+        ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }, []);
+
+  const updateCodeEditorHeight = useCallback((editor: MonacoEditor.IStandaloneCodeEditor) => {
+    const contentHeight = editor.getContentHeight();
+    const padding = 24;
+    const total = contentHeight + padding;
+    let h = Math.round(Math.max(120, total));
+    // On landing page (no user interaction yet), cap height so the code cell isn't overly long
+    if (!hasUserInteractedRef.current) {
+      const maxInitial = typeof window !== 'undefined' ? Math.min(280, window.innerHeight * 0.35) : 280;
+      h = Math.min(h, maxInitial);
+    }
+    setCodeEditorHeight(h);
+    
+    // Auto-scroll to keep cursor in view when content expands (only after user has interacted)
+    if (hasUserInteractedRef.current && editor.hasTextFocus()) {
+      requestAnimationFrame(() => {
+        const editorElement = codeCellEditorRef.current;
+        if (editorElement) {
+          editorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    }
+  }, []);
 
   const enterEditMode = useCallback(() => {
+    hasUserInteractedRef.current = true;
     setIsMarkdownEditing(true);
-    setTimeout(() => markdownTextareaRef.current?.focus(), 0);
   }, []);
+
+  useEffect(() => {
+    if (!isMarkdownEditing) return;
+    const ta = markdownTextareaRef.current;
+    if (!ta) return;
+    ta.focus();
+    const id = requestAnimationFrame(() => {
+      resizeMarkdownTextarea();
+      // Ensure the textarea is visible when entering edit mode (user just double-clicked)
+      if (hasUserInteractedRef.current) {
+        ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [isMarkdownEditing, resizeMarkdownTextarea]);
+
+  useEffect(() => {
+    const ta = markdownTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [markdown]);
 
   const exitEditMode = useCallback(() => {
     setIsMarkdownEditing(false);
+  }, []);
+
+  const handleCodeCellWheel = useCallback((e: React.WheelEvent) => {
+    const container = notebookContainerRef.current;
+    if (!container) return;
+    container.scrollTop += e.deltaY;
+    e.preventDefault();
+    e.stopPropagation();
   }, []);
 
   const handleMarkdownKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.shiftKey && e.key === 'Enter') {
         e.preventDefault();
+        hasUserInteractedRef.current = true; // so code cell scroll runs when we focus it
         exitEditMode();
         onFocusCodeCell?.();
       }
@@ -82,29 +152,8 @@ export default function NotebookCells({
     [exitEditMode, onFocusCodeCell]
   );
 
-  useEffect(() => {
-    const ta = markdownTextareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 280)}px`;
-  }, [markdown]);
-
-  useEffect(() => {
-    const el = codeCellEditorRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (entry) {
-        const h = entry.contentRect.height;
-        setCodeEditorHeight(Math.max(180, Math.round(h)));
-      }
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   return (
-    <div className="notebook-cells-container">
+    <div className="notebook-cells-container" ref={notebookContainerRef}>
       {/* Markdown cell */}
       <div className="notebook-cell notebook-cell-markdown">
         <div className="cell-label">Markdown</div>
@@ -136,7 +185,11 @@ export default function NotebookCells({
               ref={markdownTextareaRef}
               className="markdown-input"
               value={markdown}
-              onChange={(e) => onMarkdownChange(e.target.value)}
+              onChange={(e) => {
+                hasUserInteractedRef.current = true;
+                onMarkdownChange(e.target.value);
+                resizeMarkdownTextarea();
+              }}
               onKeyDown={handleMarkdownKeyDown}
               placeholder="Write supporting text in **Markdown**..."
               rows={4}
@@ -184,7 +237,7 @@ export default function NotebookCells({
             </button>
           </div>
         </div>
-        <div className="code-cell-editor" ref={codeCellEditorRef}>
+        <div className="code-cell-editor" ref={codeCellEditorRef} onWheel={handleCodeCellWheel}>
           <Editor
             height={codeEditorHeight}
             defaultLanguage="python"
@@ -193,13 +246,31 @@ export default function NotebookCells({
             onChange={(value) => onCodeChange(value || '')}
             onMount={(editor) => {
               onEditorMount?.(editor);
+              // Defer initial height so Monaco has laid out; avoids landing page showing an overly tall cell
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => updateCodeEditorHeight(editor));
+              });
+              editor.getModel()?.onDidChangeContent(() => {
+                requestAnimationFrame(() => updateCodeEditorHeight(editor));
+              });
+              editor.onDidFocusEditorText(() => {
+                hasUserInteractedRef.current = true;
+                requestAnimationFrame(() => {
+                  updateCodeEditorHeight(editor);
+                  if (hasUserInteractedRef.current) {
+                    const editorElement = codeCellEditorRef.current;
+                    if (editorElement) {
+                      editorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                  }
+                });
+              });
               editor.addAction({
                 id: 'run-cell',
                 label: 'Run cell',
                 keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
                 run: () => onRun(),
               });
-              editor.focus();
             }}
             theme={editorTheme}
             options={{

@@ -17,20 +17,15 @@ const DEFAULT_MARKDOWN = `## How to use this notebook
 - **Visualization:** After running, use the arrows to step through operations and **Export** to save as PDF or **Share** to copy a link.`;
 
 const DEFAULT_CODE = `from datascience import Table
-
-# See the markdown cell above for instructions.
-# Example: create a table and run an operation to see the visualization.
-students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie'],
-    'Age', [20, 21, 22]
-)
-students.select('Name', 'Age')
+# See markdown above for instructions
+students = Table().with_columns('Name', ['Alice', 'Bob'])
 `;
 
 type PyodideStatus = 'loading' | 'ready' | 'error';
 type AppTheme = 'berkeley' | 'jupyter';
 
 const THEME_STORAGE_KEY = 'theme';
+const NOTEBOOK_WIDTH_STORAGE_KEY = 'notebookWidthPercent';
 
 function App() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
@@ -46,6 +41,14 @@ function App() {
       ? 'jupyter'
       : 'berkeley'
   );
+  const [notebookWidthPercent, setNotebookWidthPercent] = useState(() => {
+    if (typeof localStorage === 'undefined') return 45;
+    const stored = localStorage.getItem(NOTEBOOK_WIDTH_STORAGE_KEY);
+    if (stored == null) return 45;
+    const n = Number(stored);
+    return Number.isFinite(n) && n >= 20 && n <= 80 ? n : 45;
+  });
+  const mainContentRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const exportContainerRef = useRef<HTMLDivElement>(null);
@@ -61,6 +64,28 @@ function App() {
       /* ignore */
     }
   }, [theme]);
+
+  const handleResizerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const onMove = (e: MouseEvent) => {
+      const el = mainContentRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const next = Math.max(20, Math.min(80, ((e.clientX - rect.left) / rect.width) * 100));
+      setNotebookWidthPercent(next);
+      try {
+        localStorage.setItem(NOTEBOOK_WIDTH_STORAGE_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
     monaco.editor.defineTheme('data8-dark', {
@@ -419,7 +444,11 @@ function App() {
         </div>
       </header>
 
-      <div className="main-content jupyter-style">
+      <div
+        ref={mainContentRef}
+        className="main-content jupyter-style"
+        style={{ ['--notebook-width' as string]: `${notebookWidthPercent}%` }}
+      >
         {/* Left: Notebook (markdown + code cells) */}
         <div className="notebook-panel">
           <div className="notebook-header">
@@ -451,6 +480,13 @@ function App() {
             />
           </div>
         </div>
+
+        <div
+          className="panel-resizer"
+          role="separator"
+          aria-label="Resize panels"
+          onMouseDown={handleResizerMouseDown}
+        />
 
         {/* Right: Visualization */}
         <TracePanel output={output} slideshowRef={slideshowRef} />

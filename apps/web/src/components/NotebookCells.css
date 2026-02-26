@@ -118,8 +118,7 @@
 
 .markdown-input {
   width: 100%;
-  min-height: 100px;
-  max-height: 280px;
+  min-height: 80px;
   padding: 0.75rem 1rem;
   font-family: 'Source Code Pro', 'Courier New', monospace;
   font-size: 0.875rem;
@@ -224,8 +223,7 @@
 
 /* Code cell */
 .notebook-cell-code {
-  flex: 1;
-  min-height: 200px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -286,8 +284,7 @@
 }
 
 .code-cell-editor {
-  flex: 1;
-  min-height: 180px;
+  min-height: 120px;
   border-radius: 0 0 8px 8px;
   overflow: hidden;
 }

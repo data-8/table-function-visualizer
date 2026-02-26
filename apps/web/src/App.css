@@ -247,8 +247,49 @@
 }
 
 .main-content.jupyter-style {
-  display: grid;
-  grid-template-columns: 45% 55%;
+  display: flex;
+  flex-direction: row;
+}
+
+.main-content.jupyter-style .notebook-panel {
+  width: var(--notebook-width, 45%);
+  min-width: 280px;
+  flex-shrink: 0;
+}
+
+.main-content.jupyter-style .trace-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel-resizer {
+  width: 8px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--border-subtle);
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.panel-resizer::before {
+  content: '';
+  width: 2px;
+  height: 32px;
+  border-radius: 1px;
+  background: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+.panel-resizer:hover,
+.panel-resizer:active {
+  background: var(--border-strong);
+}
+
+.panel-resizer:hover::before {
+  opacity: 1;
 }
 
 /* Jupyter-style Notebook Panel */
@@ -828,8 +869,16 @@
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .main-content.jupyter-style {
-    grid-template-columns: 1fr;
-    grid-template-rows: 50% 50%;
+    flex-direction: column;
+  }
+
+  .main-content.jupyter-style .notebook-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .panel-resizer {
+    display: none;
   }
 
   .notebook-panel {
