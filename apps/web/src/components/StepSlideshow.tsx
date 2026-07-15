@@ -1,36 +1,46 @@
-import { useState, useEffect, useCallback, forwardRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, forwardRef } from 'react';
 import type { TraceRecord } from '../lib/pyodide';
+import { flattenTrace, firstFrameOfOperation, type Frame } from '../lib/frames';
 import DataTransformation from './DataTransformation';
 import './StepSlideshow.css';
 
 export interface StepCardProps {
-  record: TraceRecord;
-  stepIndex: number;
-  totalSteps: number;
+  frame: Frame;
 }
 
-/** Single-step content (header, explanation, DataTransformation). Used for display and PDF export. */
-export function StepCard({ record, stepIndex, totalSteps }: StepCardProps) {
+/** Single-frame content (header, explanation, DataTransformation). Used for display and PDF export. */
+export function StepCard({ frame }: StepCardProps) {
+  const { record, subStep, opIndex, opTotal, subIndex, subTotal } = frame;
   const hasValidData = record.input && record.output;
-  const explanation =
+  const baseExplanation =
     record.input?.num_rows === 0 &&
     record.output?.num_rows > 0 &&
     (record.operation === 'with_columns' || record.operation === 'with_column')
       ? `Created table with ${record.output.num_columns} columns and ${record.output.num_rows} rows`
       : record.explanation;
+  const explanation = subStep?.message ?? baseExplanation;
+  const showSubProgress = subTotal !== undefined && subTotal > 1;
 
   return (
     <div className="step-slideshow step-card">
       <div className="slideshow-header">
         <div className="step-indicator">
-          <span className="step-badge">Step {stepIndex + 1} of {totalSteps}</span>
+          <span className="step-badge">
+            Step {opIndex + 1} of {opTotal}
+            {showSubProgress && (
+              <span className="sub-progress"> · part {(subIndex ?? 0) + 1} of {subTotal}</span>
+            )}
+          </span>
         </div>
         <div className="step-operation-title">
           <code>{record.operation}()</code>
         </div>
       </div>
       <div className="slideshow-explanation">
-        <span className="explanation-text">{explanation}</span>
+        <div className="explanation-body">
+          <span className="explanation-text">{explanation}</span>
+          {subStep?.detail && <code className="explanation-detail">{subStep.detail}</code>}
+        </div>
       </div>
       {hasValidData && (
         <div className="slideshow-visualization">
@@ -38,6 +48,11 @@ export function StepCard({ record, stepIndex, totalSteps }: StepCardProps) {
             before={record.input}
             after={record.output}
             operation={record.operation}
+            inputHighlights={subStep?.input_highlights}
+            outputHighlights={subStep?.output_highlights}
+            outputOverride={subStep?.output_state}
+            auxTable={subStep?.aux_table}
+            isSubStep={Boolean(subStep)}
           />
         </div>
       )}
@@ -50,19 +65,20 @@ interface StepSlideshowProps {
 }
 
 const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function StepSlideshow({ trace }, ref) {
-  const [currentStep, setCurrentStep] = useState(0);
+  const frames = useMemo(() => flattenTrace(trace), [trace]);
+  const [currentFrame, setCurrentFrame] = useState(0);
 
   const goToPrevious = useCallback(() => {
-    setCurrentStep(prev => Math.max(0, prev - 1));
+    setCurrentFrame(prev => Math.max(0, prev - 1));
   }, []);
 
   const goToNext = useCallback(() => {
-    setCurrentStep(prev => Math.min(trace.length - 1, prev + 1));
-  }, [trace.length]);
+    setCurrentFrame(prev => Math.min(frames.length - 1, prev + 1));
+  }, [frames.length]);
 
-  // Reset to first step when trace changes
+  // Reset to first frame when trace changes
   useEffect(() => {
-    setCurrentStep(0);
+    setCurrentFrame(0);
   }, [trace]);
 
   // Keyboard navigation
@@ -81,17 +97,17 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [goToNext, goToPrevious]);
 
-  if (!trace || trace.length === 0) {
+  if (!trace || trace.length === 0 || frames.length === 0) {
     return null;
   }
 
-  const record = trace[currentStep];
-  const isFirst = currentStep === 0;
-  const isLast = currentStep === trace.length - 1;
+  const frame = frames[Math.min(currentFrame, frames.length - 1)];
+  const isFirst = currentFrame === 0;
+  const isLast = currentFrame === frames.length - 1;
 
   return (
     <div className="step-slideshow" ref={ref}>
-      <StepCard record={record} stepIndex={currentStep} totalSteps={trace.length} />
+      <StepCard frame={frame} />
 
       {/* Navigation Controls */}
       <div className="slideshow-controls">
@@ -105,15 +121,24 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
           <span className="nav-text">Previous</span>
         </button>
 
+        {/* One dot per operation; the active operation shows sub-progress */}
         <div className="step-dots">
-          {trace.map((_, index) => (
-            <button
-              key={index}
-              className={`dot ${index === currentStep ? 'active' : ''}`}
-              onClick={() => setCurrentStep(index)}
-              title={`Go to step ${index + 1}`}
-            />
-          ))}
+          {trace.map((record, opIndex) => {
+            const isActive = opIndex === frame.opIndex;
+            const subCount = record.sub_steps?.length ?? 0;
+            return (
+              <button
+                key={opIndex}
+                className={`dot ${isActive ? 'active' : ''}`}
+                onClick={() => setCurrentFrame(firstFrameOfOperation(frames, opIndex))}
+                title={`Go to step ${opIndex + 1}: ${record.operation}()`}
+              >
+                {isActive && subCount > 1 && (
+                  <span className="dot-sub-label">{(frame.subIndex ?? 0) + 1}/{subCount}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <button
@@ -136,4 +161,3 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
 });
 
 export default StepSlideshow;
-

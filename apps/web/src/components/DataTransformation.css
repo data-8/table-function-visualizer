@@ -61,12 +61,18 @@
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 380px;
   min-height: 100px;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+}
+
+.data-table-wrapper.centered {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  overflow: hidden;
 }
 
 .empty-table-placeholder {
@@ -103,7 +109,7 @@
 }
 
 .data-table.compact th {
-  background-color: var(--bg-panel);
+  background-color: var(--bg-table-header);
   padding: 0.4rem 0.6rem;
   text-align: left;
   font-weight: 600;
@@ -112,16 +118,63 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .data-table.compact td {
   padding: 0.4rem 0.6rem;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.data-table.compact th.num,
+.data-table.compact td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .data-table.compact tr:hover td {
   background-color: var(--accent-muted);
+}
+
+/* Sub-step highlights */
+.data-table.compact th.hl-col-header {
+  background-color: var(--hl-cell);
+  border-bottom-color: var(--accent);
+}
+
+.data-table.compact td.hl-col {
+  background-color: var(--hl-col);
+}
+
+.data-table.compact tr.hl-row td {
+  background-color: var(--hl-row);
+}
+
+.data-table.compact tr.hl-row td.hl-col {
+  background-color: var(--hl-row);
+  box-shadow: inset 0 0 0 9999px var(--hl-col);
+}
+
+.data-table.compact tr.hl-row-removed td {
+  background-color: var(--hl-remove);
+  color: var(--hl-remove-text);
+  text-decoration: line-through;
+  opacity: 0.85;
+}
+
+.data-table.compact td.hl-cell {
+  background-color: var(--hl-cell);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  font-weight: 600;
+}
+
+.aux-header {
+  margin-top: 0.5rem;
 }
 
 /* Highlight Changes */
@@ -174,6 +227,23 @@
   color: var(--text-tertiary);
   background-color: var(--bg-panel);
   font-style: italic;
+}
+
+button.table-more-button {
+  display: block;
+  width: 100%;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font-weight: 600;
+  font-style: normal;
+  color: var(--text-secondary);
+}
+
+button.table-more-button:hover {
+  color: var(--accent);
+  box-shadow: none;
+  transform: none;
 }
 
 /* Transform Arrow */

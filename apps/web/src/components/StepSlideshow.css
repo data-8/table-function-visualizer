@@ -50,6 +50,11 @@
   box-shadow: var(--shadow-card);
 }
 
+.sub-progress {
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
 /* Explanation */
 .slideshow-explanation {
   display: flex;
@@ -61,6 +66,27 @@
   border-radius: 12px;
   border: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-card);
+}
+
+.explanation-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.explanation-detail {
+  font-family: 'Source Code Pro', 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.4rem 0.9rem;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .explanation-text {
@@ -162,6 +188,26 @@
   width: 16px;
   height: 16px;
   box-shadow: 0 0 12px var(--accent-muted);
+}
+
+/* Active dot stretches into a pill when the operation has sub-steps */
+.dot.active:has(.dot-sub-label) {
+  width: auto;
+  min-width: 16px;
+  height: 18px;
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot-sub-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--accent-button-text);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* Keyboard Hint */

@@ -7,6 +7,7 @@ import NotebookCells from './components/NotebookCells';
 import { StepCard } from './components/StepSlideshow';
 import ExamplesGallery from './components/ExamplesGallery';
 import { initPyodide, runPythonCode, stopExecutionHard, type PyodideOutput } from './lib/pyodide';
+import { flattenTrace } from './lib/frames';
 import { type Example } from './lib/examples';
 import type { editor as MonacoEditor } from 'monaco-editor';
 
@@ -37,9 +38,9 @@ function App() {
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
   const [theme, setTheme] = useState<AppTheme>(() =>
-    (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE_KEY) === 'jupyter')
-      ? 'jupyter'
-      : 'berkeley'
+    (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE_KEY) === 'berkeley')
+      ? 'berkeley'
+      : 'jupyter'
   );
   const [notebookWidthPercent, setNotebookWidthPercent] = useState(() => {
     if (typeof localStorage === 'undefined') return 45;
@@ -85,6 +86,21 @@ function App() {
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+  }, []);
+
+  const handleResizerKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const delta = e.key === 'ArrowLeft' ? -2 : 2;
+    setNotebookWidthPercent(prev => {
+      const next = Math.max(20, Math.min(80, prev + delta));
+      try {
+        localStorage.setItem(NOTEBOOK_WIDTH_STORAGE_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
   }, []);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
@@ -481,12 +497,22 @@ function App() {
           </div>
         </div>
 
+        {/* ARIA "window splitter" pattern: a focusable separator is valid, but
+            jsx-a11y doesn't model it */}
+        {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
           className="panel-resizer"
           role="separator"
           aria-label="Resize panels"
+          aria-orientation="vertical"
+          aria-valuenow={Math.round(notebookWidthPercent)}
+          aria-valuemin={20}
+          aria-valuemax={80}
+          tabIndex={0}
           onMouseDown={handleResizerMouseDown}
+          onKeyDown={handleResizerKeyDown}
         />
+        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {/* Right: Visualization */}
         <TracePanel output={output} slideshowRef={slideshowRef} />
@@ -501,17 +527,12 @@ function App() {
             position: 'absolute',
             left: '-9999px',
             top: 0,
-            width: 640,
+            width: 900,
             zIndex: -1,
           }}
         >
-          {output.trace.map((record, i) => (
-            <StepCard
-              key={i}
-              record={record}
-              stepIndex={i}
-              totalSteps={output.trace!.length}
-            />
+          {flattenTrace(output.trace).map((frame, i) => (
+            <StepCard key={i} frame={frame} />
           ))}
         </div>
       )}

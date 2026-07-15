@@ -35,6 +35,13 @@
   --button-text: var(--text-primary);
   --accent-button-text: #1d1a10;
   --editor-bg: #04070f;
+  /* Step-visualization highlights */
+  --hl-col: rgba(255, 198, 70, 0.16);
+  --hl-row: rgba(80, 200, 120, 0.24);
+  --hl-remove: rgba(220, 82, 82, 0.28);
+  --hl-remove-text: #ffcbc1;
+  --hl-cell: rgba(255, 198, 70, 0.4);
+  --bg-table-header: #04234a;
   color: var(--text-primary);
   background: var(--bg-app);
   font-synthesis: none;
@@ -67,6 +74,13 @@
   --button-text: #ffffff;
   --accent-button-text: #ffffff;
   --editor-bg: #fafafa;
+  /* Step-visualization highlights */
+  --hl-col: rgba(243, 119, 38, 0.12);
+  --hl-row: rgba(38, 166, 91, 0.18);
+  --hl-remove: rgba(220, 53, 69, 0.14);
+  --hl-remove-text: #a02733;
+  --hl-cell: rgba(243, 119, 38, 0.35);
+  --bg-table-header: #f2f2f2;
   color: var(--text-primary);
   background: var(--bg-app);
 }
