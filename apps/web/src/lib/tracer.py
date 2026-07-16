@@ -174,6 +174,16 @@ def _make_explanation(operation, args, kwargs, input_state, output_state):
     elif operation == "take":
         n = output_state.get("num_rows", 0)
         return f"Took {n} row{'s' if n != 1 else ''} by position."
+    elif operation == "with_row" and is_init:
+        return "Initialized table with 1 row."
+    elif operation == "with_row":
+        return f"Added 1 row. Now {output_state.get('num_rows', 0)} rows."
+    elif operation == "with_rows" and is_init:
+        n = output_state.get("num_rows", 0)
+        return f"Initialized table with {n} row{'s' if n != 1 else ''}."
+    elif operation == "with_rows":
+        added = output_state.get("num_rows", 0) - input_state.get("num_rows", 0)
+        return f"Added {added} row{'s' if added != 1 else ''}. Now {output_state.get('num_rows', 0)} rows."
     else:
         return f"Applied {operation}."
 
@@ -577,6 +587,21 @@ def _sub_steps_take(table, args, kwargs, input_state, output_state):
         "input_highlights": {"rows": visible},
     }]
 
+def _sub_steps_with_rows(table, args, kwargs, input_state, output_state):
+    is_init = input_state.get("num_rows", 0) == 0
+    added = output_state["num_rows"] - input_state["num_rows"]
+    if added <= 0:
+        return None
+    new_rows = list(range(_preview_len(output_state) - added, _preview_len(output_state)))
+    if not new_rows:
+        return None
+    return [{
+        "message": ("Each new row is appended to the table, keeping the same columns."
+                    if not is_init else
+                    "Each row fills in the column labels given when the table was created."),
+        "output_highlights": {"rows": new_rows},
+    }]
+
 _SUB_STEP_GENERATORS = {
     "group": _sub_steps_group,
     "pivot": _sub_steps_pivot,
@@ -584,6 +609,7 @@ _SUB_STEP_GENERATORS = {
     "sort": _sub_steps_sort,
     "join": _sub_steps_join,
     "take": _sub_steps_take,
+    "with_rows": _sub_steps_with_rows,
 }
 
 def _make_sub_steps(operation, table, args, kwargs, input_state, output_state):
@@ -704,7 +730,7 @@ def _patch_table_methods():
     except ImportError:
         print("⚠️ datascience not found")
         return
-    operations = ["select", "drop", "with_column", "with_columns", "where", "sort", "group", "join", "pivot"]
+    operations = ["select", "drop", "with_column", "with_columns", "with_row", "with_rows", "where", "sort", "group", "join", "pivot"]
     for op_name in operations:
         if hasattr(Table, op_name):
             original = getattr(Table, op_name)

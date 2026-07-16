@@ -160,7 +160,16 @@ print("Testing tracer...")
 enable()
 print("✓ Tracer enabled and ready")
 `);
-    
+
+    // Pre-import the standard Data 8 symbols (Table, make_array, are, percentile, ...)
+    // into the persistent global namespace. Course materials conventionally assume
+    // `from datascience import *`, so code that only does `from datascience import Table`
+    // (like the default snippet and every built-in example) still has make_array/are available.
+    await pyodide.runPythonAsync(`
+from datascience import *
+print("✓ datascience symbols available (Table, make_array, are, percentile, ...)")
+`);
+
     console.log('=== Package installation complete ===');
     wheelsInstalled = true;
   } catch (error) {
