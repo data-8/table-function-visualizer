@@ -26,6 +26,20 @@ interface NotebookCellsProps {
   onFocusCodeCell?: () => void;
 }
 
+/** iOS Safari zooms the page when focusing text below 16px, so use a larger editor font on phones */
+function useIsNarrowScreen(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const onChange = (e: MediaQueryListEvent) => setNarrow(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
+
 function PlayIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -63,6 +77,7 @@ export default function NotebookCells({
   const [isMarkdownEditing, setIsMarkdownEditing] = useState(false);
   const [codeEditorHeight, setCodeEditorHeight] = useState(120);
   const hasUserInteractedRef = useRef(false);
+  const isNarrowScreen = useIsNarrowScreen();
 
   const resizeMarkdownTextarea = useCallback(() => {
     const ta = markdownTextareaRef.current;
@@ -275,7 +290,7 @@ export default function NotebookCells({
             theme={editorTheme}
             options={{
               minimap: { enabled: false },
-              fontSize: 14,
+              fontSize: isNarrowScreen ? 16 : 14,
               lineNumbers: 'on',
               scrollBeyondLastLine: false,
               automaticLayout: true,

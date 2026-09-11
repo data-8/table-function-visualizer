@@ -223,3 +223,27 @@
 .code-cell-editor .monaco-editor .margin {
   background-color: var(--editor-bg) !important;
 }
+
+@media (max-width: 768px) {
+  .notebook-cells-container {
+    padding: 0.75rem;
+    gap: 0.75rem;
+  }
+
+  .markdown-preview-only {
+    padding: 0.75rem;
+  }
+
+  .markdown-cell-inner.markdown-edit-mode {
+    padding: 0.5rem 0.75rem 0.75rem;
+  }
+
+  .markdown-input {
+    font-size: 16px; /* prevents iOS Safari from zooming the page on focus */
+  }
+
+  .cell-btn {
+    min-height: 2.25rem;
+    padding: 0.35rem 0.8rem;
+  }
+}

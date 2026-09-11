@@ -323,9 +323,70 @@ button.table-more-button:hover {
     grid-template-rows: auto auto auto;
   }
 
+  /* Stacked layout: keep the label/badges upright and only turn the arrow downward */
   .transform-arrow-container {
-    transform: rotate(90deg);
-    margin: 1rem 0;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem 1rem;
+    min-width: 0;
+    margin: 0.25rem 0;
+  }
+
+  .transform-arrow {
+    rotate: 90deg;
+    font-size: 2.25rem;
+    line-height: 1;
+  }
+
+  .transform-changes {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.35rem;
   }
 }
 
+@media (max-width: 768px) {
+  .data-transformation {
+    padding: 1rem;
+    gap: 1rem;
+    margin: 0.5rem 0;
+    border-radius: 10px;
+  }
+
+  .section-header {
+    padding: 0.5rem 0.7rem;
+    flex-wrap: wrap;
+  }
+
+  .section-title {
+    font-size: 0.8rem;
+  }
+
+  .section-info {
+    font-size: 0.7rem;
+  }
+
+  .data-table-wrapper {
+    max-height: 300px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table.compact {
+    font-size: 0.78rem;
+  }
+
+  .data-table.compact th,
+  .data-table.compact td {
+    padding: 0.35rem 0.5rem;
+  }
+
+  .empty-table-placeholder {
+    padding: 1.25rem;
+  }
+
+  .empty-icon {
+    font-size: 2rem;
+  }
+}

@@ -24,6 +24,8 @@ students = Table().with_columns('Name', ['Alice', 'Bob'])
 
 type PyodideStatus = 'loading' | 'ready' | 'error';
 type AppTheme = 'berkeley' | 'jupyter';
+/** Which panel is shown on narrow (phone) screens; ignored on desktop where both are visible */
+type MobileView = 'notebook' | 'visualization';
 
 const THEME_STORAGE_KEY = 'theme';
 const NOTEBOOK_WIDTH_STORAGE_KEY = 'notebookWidthPercent';
@@ -37,6 +39,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
+  const [mobileView, setMobileView] = useState<MobileView>('notebook');
   const [theme, setTheme] = useState<AppTheme>(() =>
     (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE_KEY) === 'berkeley')
       ? 'berkeley'
@@ -101,6 +104,11 @@ function App() {
       }
       return next;
     });
+  }, []);
+
+  const switchMobileView = useCallback((view: MobileView) => {
+    setMobileView(view);
+    window.scrollTo({ top: 0 });
   }, []);
 
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
@@ -320,6 +328,7 @@ function App() {
       if (token !== runTokenRef.current) return;
       setOutput(result);
       if (result.trace && result.trace.length > 0) {
+        switchMobileView('visualization');
         setStatusMessage(`✓ Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
       } else if (result.error) {
         setStatusMessage('✗ Execution error - see output below');
@@ -331,12 +340,13 @@ function App() {
       if (token !== runTokenRef.current) return;
       const errorMessage = error instanceof Error ? error.message : String(error);
       setOutput({ stdout: '', stderr: '', error: errorMessage });
+      switchMobileView('visualization');
       setStatusMessage('✗ Execution failed - check output below');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } finally {
       if (token === runTokenRef.current) setIsRunning(false);
     }
-  }, [code, pyodideStatus]);
+  }, [code, pyodideStatus, switchMobileView]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -376,6 +386,7 @@ function App() {
     setCode(example.code);
     setCurrentExample(example.title);
     setOutput({ stdout: '', stderr: '' }); // Clear previous output
+    switchMobileView('notebook');
     // Update permalink immediately when example is selected
     setTimeout(() => updatePermalink(), 100);
   };
@@ -460,9 +471,34 @@ function App() {
         </div>
       </header>
 
+      {/* Phone-only: toggle between the two panels (hidden on desktop via CSS) */}
+      <div className="mobile-view-switcher" role="tablist" aria-label="Panel">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileView === 'notebook'}
+          className={`mobile-view-tab ${mobileView === 'notebook' ? 'active' : ''}`}
+          onClick={() => switchMobileView('notebook')}
+        >
+          Notebook
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mobileView === 'visualization'}
+          className={`mobile-view-tab ${mobileView === 'visualization' ? 'active' : ''}`}
+          onClick={() => switchMobileView('visualization')}
+        >
+          Visualization
+          {output.trace && output.trace.length > 0 && (
+            <span className="mobile-view-badge">{output.trace.length}</span>
+          )}
+        </button>
+      </div>
+
       <div
         ref={mainContentRef}
-        className="main-content jupyter-style"
+        className={`main-content jupyter-style mobile-view-${mobileView}`}
         style={{ ['--notebook-width' as string]: `${notebookWidthPercent}%` }}
       >
         {/* Left: Notebook (markdown + code cells) */}
