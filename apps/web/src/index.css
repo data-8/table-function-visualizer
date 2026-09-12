@@ -1,89 +1,130 @@
+/* ------------------------------------------------------------------
+   Design tokens
+   Two palettes share one component system:
+   - jupyter (default) warm neutrals with Jupyter orange
+   - berkeley           deep blue with California gold, always dark
+   ------------------------------------------------------------------ */
+
 :root {
-  font-family: 'Inter', 'Source Sans Pro', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-serif: 'Newsreader', 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --control-height: 36px;
+
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'pnum' on, 'lnum' on, 'liga' on;
+
+  /* Jupyter — light (default) */
+  color-scheme: light;
+  --bg-app: #faf9f5;
+  --bg-header: #faf9f5;
+  --bg-panel: #ffffff;
+  --bg-panel-muted: #f5f4ed;
+  --bg-card: #ffffff;
+  --bg-sunken: #f0eee6;
+  --bg-button: #ffffff;
+  --bg-table-header: #f5f4ed;
+  --editor-bg: #ffffff;
+  --panel-elevated: #ffffff;
+  --panel-muted: #f5f4ed;
+
+  --border-subtle: #e8e6dc;
+  --border-strong: #d1cfc5;
+
+  --text-primary: #141413;
+  --text-secondary: #3d3d3a;
+  --text-tertiary: #73726c;
+
+  --accent: #f37726;
+  --accent-hover: #d9631a;
+  --accent-muted: rgba(243, 119, 38, 0.14);
+  --accent-soft: rgba(243, 119, 38, 0.09);
+  --accent-button-text: #ffffff;
+
+  --primary-bg: #f37726;
+  --primary-fg: #ffffff;
+  --primary-hover: #d9631a;
+
+  --button-text: var(--text-primary);
+  --danger: #bf4d43;
+  --danger-bg: rgba(191, 77, 67, 0.1);
+  --success: #629987;
+
+  --shadow-panel: none;
+  --shadow-card: none;
+  --outline-focus: #d9631a;
+
+  /* Step-visualization highlights */
+  --hl-col: rgba(243, 119, 38, 0.1);
+  --hl-row: rgba(98, 153, 135, 0.2);
+  --hl-remove: rgba(191, 77, 67, 0.12);
+  --hl-remove-text: #a0362d;
+  --hl-cell: rgba(243, 119, 38, 0.3);
+
+  color: var(--text-primary);
+  background: var(--bg-app);
+}
+
+/* Berkeley — always dark */
+[data-theme='berkeley'] {
   color-scheme: dark;
-  /* Berkeley palette (named, for reference) */
-  --berkeley-blue: #003262;
-  --berkeley-blue-dark: #00142a;
-  --berkeley-blue-muted: #001a34;
-  --founders-rock: #3b7ea1;
-  --california-gold: #ffc646;
-  --medalist: #c4820e;
-  --pacific: #264d79;
-  --point-grey: #576f7d;
-  --cloud-white: #f9fafb;
-  --panel-elevated: rgba(0, 24, 58, 0.88);
-  --panel-muted: rgba(18, 56, 92, 0.74);
-  --border-strong: rgba(255, 198, 70, 0.55);
-  --border-subtle: rgba(59, 126, 161, 0.45);
-  --text-primary: #f7f9fd;
-  --text-secondary: #dbe4f3;
-  --text-tertiary: #bac4d4;
-  /* Semantic theme variables (Berkeley defaults) */
   --bg-app: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 20, 45, 0.96) 55%, #000a1a 100%);
-  --bg-header: linear-gradient(132deg, rgba(0, 24, 52, 0.97), rgba(0, 18, 41, 0.98));
+  --bg-header: rgba(0, 20, 45, 0.85);
   --bg-panel: rgba(0, 24, 58, 0.88);
   --bg-panel-muted: rgba(18, 56, 92, 0.74);
   --bg-card: rgba(0, 36, 72, 0.6);
+  --bg-sunken: rgba(0, 16, 38, 0.55);
   --bg-button: rgba(0, 41, 84, 0.75);
+  --bg-table-header: #04234a;
+  --editor-bg: #04070f;
+  --panel-elevated: rgba(0, 24, 58, 0.88);
+  --panel-muted: rgba(18, 56, 92, 0.74);
+
+  --border-subtle: rgba(59, 126, 161, 0.45);
+  --border-strong: rgba(255, 198, 70, 0.55);
+
+  --text-primary: #f7f9fd;
+  --text-secondary: #dbe4f3;
+  --text-tertiary: #bac4d4;
+
   --accent: #ffc646;
+  --accent-hover: #ffd374;
   --accent-muted: rgba(255, 198, 70, 0.28);
+  --accent-soft: rgba(255, 198, 70, 0.14);
+  --accent-button-text: #1d1a10;
+
+  --primary-bg: #ffc646;
+  --primary-fg: #1d1a10;
+  --primary-hover: #ffd374;
+
+  --danger: #f08a8a;
+  --danger-bg: rgba(147, 35, 35, 0.32);
+  --success: #7fd3a3;
+
   --shadow-panel: 0 20px 40px rgba(0, 16, 38, 0.45);
   --shadow-card: 0 12px 24px rgba(0, 14, 32, 0.55);
-  --outline-focus: rgba(253, 181, 21, 0.6);
-  --button-text: var(--text-primary);
-  --accent-button-text: #1d1a10;
-  --editor-bg: #04070f;
-  /* Step-visualization highlights */
+  --outline-focus: rgba(253, 181, 21, 0.8);
+
   --hl-col: rgba(255, 198, 70, 0.16);
   --hl-row: rgba(80, 200, 120, 0.24);
   --hl-remove: rgba(220, 82, 82, 0.28);
   --hl-remove-text: #ffcbc1;
   --hl-cell: rgba(255, 198, 70, 0.4);
-  --bg-table-header: #04234a;
-  color: var(--text-primary);
-  background: var(--bg-app);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-[data-theme="jupyter"] {
-  color-scheme: light;
-  --text-primary: #212529;
-  --text-secondary: #495057;
-  --text-tertiary: #6c757d;
-  --border-strong: #f37726;
-  --border-subtle: #dee2e6;
-  --bg-app: linear-gradient(160deg, #fafafa 0%, #f5f5f5 45%, #eeeeee 100%);
-  --bg-header: linear-gradient(132deg, #ffffff, #fafafa);
-  --bg-panel: rgba(255, 255, 255, 0.95);
-  --bg-panel-muted: rgba(245, 245, 245, 0.95);
-  --bg-card: #ffffff;
-  --bg-button: #f37726;
-  --accent: #f37726;
-  --accent-muted: rgba(243, 119, 38, 0.2);
-  --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --outline-focus: rgba(243, 119, 38, 0.6);
-  --panel-elevated: rgba(255, 255, 255, 0.95);
-  --panel-muted: rgba(245, 245, 245, 0.95);
-  --california-gold: #f37726;
-  --button-text: #ffffff;
-  --accent-button-text: #ffffff;
-  --editor-bg: #fafafa;
-  /* Step-visualization highlights */
-  --hl-col: rgba(243, 119, 38, 0.12);
-  --hl-row: rgba(38, 166, 91, 0.18);
-  --hl-remove: rgba(220, 53, 69, 0.14);
-  --hl-remove-text: #a02733;
-  --hl-cell: rgba(243, 119, 38, 0.35);
-  --bg-table-header: #f2f2f2;
-  color: var(--text-primary);
-  background: var(--bg-app);
-}
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
 
 * {
   margin: 0;
@@ -96,7 +137,8 @@ body {
   display: flex;
   min-width: 320px;
   min-height: 100vh;
-  background: transparent;
+  background: var(--bg-app);
+  color: var(--text-primary);
 }
 
 #root {
@@ -104,42 +146,51 @@ body {
   height: 100vh;
 }
 
+::selection {
+  background: var(--accent-muted);
+}
+
+/* Controls: 36px, 8px radius, no shadows. Primary/secondary variants set below. */
 button {
-  border-radius: 999px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.3em;
-  font-size: 1em;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: var(--control-height);
+  padding: 0 0.85rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-strong);
+  font-size: 0.875rem;
+  font-weight: 500;
   font-family: inherit;
+  line-height: 1;
   background: var(--bg-button);
   color: var(--button-text);
   cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.25s, box-shadow 0.25s ease;
+  transition: color 0.1s ease-in-out, background-color 0.2s ease-in-out, border-color 0.2s ease-in-out;
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--accent);
-  box-shadow: 0 6px 18px var(--accent-muted);
-  transform: translateY(-1px);
+  background: var(--bg-sunken);
+  border-color: var(--text-tertiary);
 }
 
-button:focus,
 button:focus-visible {
-  outline: 3px solid var(--outline-focus);
-  outline-offset: 2px;
+  outline: 2px solid var(--outline-focus);
+  outline-offset: 3px;
 }
 
 button:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-/* When no explicit theme, force dark (Berkeley) even if system prefers light */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="jupyter"]) {
-    color-scheme: dark;
-    color: var(--text-primary);
-    background: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 31, 63, 0.95) 55%, #000d1f 100%);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
-

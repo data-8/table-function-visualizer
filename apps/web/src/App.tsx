@@ -14,21 +14,35 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 const DEFAULT_MARKDOWN = `## How to use this notebook
 
 - **Markdown cell (this cell):** Double-tap or double-click to edit. Use **Shift+Enter** or the **Render** button to see the rendered version and (with Shift+Enter) move to the code cell.
-- **Code cell:** Write Python using \`datascience.Table\`. Press **Run** or **Cmd+Enter** to execute. The right panel shows step-by-step table operations.
+- **Code cell:** Write Python using \`Table\` and \`make_array\` from the \`datascience\` library. Press **Run** or **Ctrl+Enter** (**Cmd+Enter** on Mac) to execute. The right panel shows step-by-step table operations.
 - **Visualization:** After running, use the arrows to step through operations and **Export** to save as PDF or **Share** to copy a link.`;
 
-const DEFAULT_CODE = `from datascience import Table
+const DEFAULT_CODE = `from datascience import *
 # See markdown above for instructions
-students = Table().with_columns('Name', ['Alice', 'Bob'])
+students = Table().with_columns('Name', make_array('Alice', 'Bob'))
 `;
+
+const THEME_STORAGE_KEY = 'theme';
 
 type PyodideStatus = 'loading' | 'ready' | 'error';
 type AppTheme = 'berkeley' | 'jupyter';
+
+const THEMES: AppTheme[] = ['berkeley', 'jupyter'];
+const THEME_LABELS: Record<AppTheme, string> = { berkeley: 'Berkeley', jupyter: 'Jupyter' };
+
+function readStoredTheme(): AppTheme {
+  try {
+    return localStorage.getItem(THEME_STORAGE_KEY) === 'berkeley' ? 'berkeley' : 'jupyter';
+  } catch {
+    return 'jupyter';
+  }
+}
+
 /** Which panel is shown on narrow (phone) screens; ignored on desktop where both are visible */
 type MobileView = 'notebook' | 'visualization';
 
-const THEME_STORAGE_KEY = 'theme';
 const NOTEBOOK_WIDTH_STORAGE_KEY = 'notebookWidthPercent';
+const NOTEBOOK_STORAGE_KEY = 'notebook';
 
 function App() {
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
@@ -40,11 +54,7 @@ function App() {
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
   const [mobileView, setMobileView] = useState<MobileView>('notebook');
-  const [theme, setTheme] = useState<AppTheme>(() =>
-    (typeof localStorage !== 'undefined' && localStorage.getItem(THEME_STORAGE_KEY) === 'berkeley')
-      ? 'berkeley'
-      : 'jupyter'
-  );
+  const [theme, setTheme] = useState<AppTheme>(readStoredTheme);
   const [notebookWidthPercent, setNotebookWidthPercent] = useState(() => {
     if (typeof localStorage === 'undefined') return 45;
     const stored = localStorage.getItem(NOTEBOOK_WIDTH_STORAGE_KEY);
@@ -138,78 +148,97 @@ function App() {
       base: 'vs',
       inherit: true,
       rules: [
-        { token: 'comment', foreground: '6a737d' },
-        { token: 'comment.doc', foreground: '6a737d' },
-        { token: 'string', foreground: '032f62' },
-        { token: 'keyword', foreground: 'd73a49' },
-        { token: 'number', foreground: '005cc5' }
+        { token: 'comment', foreground: '87867f', fontStyle: 'italic' },
+        { token: 'comment.doc', foreground: '87867f', fontStyle: 'italic' },
+        { token: 'string', foreground: '3f7a67' },
+        { token: 'keyword', foreground: 'c2561a' },
+        { token: 'number', foreground: '4a7fb0' },
+        { token: 'type', foreground: '141413' },
+        { token: 'identifier', foreground: '141413' }
       ],
       colors: {
-        'editor.background': '#fafafa',
-        'editorGutter.background': '#fafafa',
-        'editor.lineHighlightBackground': '#f5f5f5',
-        'editorLineNumber.foreground': '#212529',
-        'editorLineNumber.activeForeground': '#f37726',
-        'editorCursor.foreground': '#212529',
-        'editor.selectionBackground': 'rgba(243, 119, 38, 0.2)',
-        'editorBracketMatch.background': 'rgba(243, 119, 38, 0.15)',
-        'editorBracketMatch.border': '#f37726'
+        'editor.background': '#ffffff',
+        'editorGutter.background': '#ffffff',
+        'editor.foreground': '#141413',
+        'editor.lineHighlightBackground': '#f5f4ed',
+        'editor.lineHighlightBorder': '#f5f4ed',
+        'editorLineNumber.foreground': '#b0aea5',
+        'editorLineNumber.activeForeground': '#141413',
+        'editorCursor.foreground': '#141413',
+        'editor.selectionBackground': '#fbd9c2',
+        'editor.inactiveSelectionBackground': '#f0eee6',
+        'editorBracketMatch.background': '#f0eee6',
+        'editorBracketMatch.border': '#d1cfc5',
+        'editorIndentGuide.background': '#e8e6dc',
+        'editorWidget.background': '#faf9f5',
+        'editorWidget.border': '#d1cfc5'
       }
     });
   };
 
-  // Function to update permalink in URL (using query params for better sharing)
-  const updatePermalink = useCallback(() => {
-    try {
-      const params = new URLSearchParams();
-      params.set('code', encodeURIComponent(code));
-      if (markdown.trim() && markdown !== DEFAULT_MARKDOWN) {
-        params.set('md', encodeURIComponent(markdown));
-      }
-      if (currentExample) {
-        params.set('example', currentExample);
-      }
-      const newUrl = `${window.location.pathname}?${params.toString()}`;
-      window.history.replaceState(null, '', newUrl);
-    } catch (e) {
-      console.error('Failed to update permalink:', e);
+  // Share links carry the code, markdown and example as query params. The address bar
+  // itself stays clean; the link is only built when the user clicks Share.
+  const buildShareUrl = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set('code', encodeURIComponent(code));
+    if (markdown.trim() && markdown !== DEFAULT_MARKDOWN) {
+      params.set('md', encodeURIComponent(markdown));
     }
+    if (currentExample) {
+      params.set('example', currentExample);
+    }
+    return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
   }, [code, markdown, currentExample]);
 
-  // Load code (and optional markdown) from URL query params on mount
+  // On mount: a shared link wins; otherwise restore the last session from localStorage.
+  // Query params are consumed and removed so the URL stays clean while editing.
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
       const codeParam = params.get('code');
       if (codeParam) {
-        const decodedCode = decodeURIComponent(codeParam);
-        setCode(decodedCode);
-      }
-      const mdParam = params.get('md');
-      if (mdParam) {
-        try {
-          setMarkdown(decodeURIComponent(mdParam));
-        } catch {
-          /* ignore */
+        setCode(decodeURIComponent(codeParam));
+        const mdParam = params.get('md');
+        if (mdParam) {
+          try {
+            setMarkdown(decodeURIComponent(mdParam));
+          } catch {
+            /* ignore */
+          }
         }
+        const exampleId = params.get('example');
+        if (exampleId) {
+          setCurrentExample(exampleId);
+        }
+        window.history.replaceState(null, '', window.location.pathname);
+        return;
       }
-      const exampleId = params.get('example');
-      if (exampleId) {
-        setCurrentExample(exampleId);
+      const saved = localStorage.getItem(NOTEBOOK_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { code?: string; markdown?: string; example?: string };
+        if (typeof parsed.code === 'string') setCode(parsed.code);
+        if (typeof parsed.markdown === 'string') setMarkdown(parsed.markdown);
+        if (typeof parsed.example === 'string') setCurrentExample(parsed.example);
       }
     } catch (e) {
-      console.error('Failed to decode URL params:', e);
+      console.error('Failed to restore notebook:', e);
     }
   }, []);
 
-  // Update URL when code changes (debounced)
+  // Keep the current notebook in localStorage (debounced) so a reload doesn't lose work
   useEffect(() => {
     const timeoutId = setTimeout(() => {
-      updatePermalink();
-    }, 500); // Debounce URL updates
-
+      try {
+        localStorage.setItem(
+          NOTEBOOK_STORAGE_KEY,
+          JSON.stringify({ code, markdown, example: currentExample })
+        );
+      } catch {
+        /* ignore */
+      }
+    }, 500);
     return () => clearTimeout(timeoutId);
-  }, [updatePermalink]);
+  }, [code, markdown, currentExample]);
 
   // Initialize Pyodide on mount
   useEffect(() => {
@@ -234,10 +263,7 @@ function App() {
 
   const handleShare = async () => {
     try {
-      updatePermalink();
-      // Get the full URL with query params
-      const url = window.location.href;
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(buildShareUrl());
       // Show temporary feedback
       const originalText = statusMessage;
       setStatusMessage('Link copied to clipboard!');
@@ -327,21 +353,22 @@ function App() {
       const result = await runPythonCode(code);
       if (token !== runTokenRef.current) return;
       setOutput(result);
-      if (result.trace && result.trace.length > 0) {
+      if (result.error) {
+        switchMobileView('notebook');
+        setStatusMessage('Execution error, see output under the code cell');
+      } else if (result.trace && result.trace.length > 0) {
         switchMobileView('visualization');
-        setStatusMessage(`✓ Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
-      } else if (result.error) {
-        setStatusMessage('✗ Execution error - see output below');
+        setStatusMessage(`Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
       } else {
-        setStatusMessage('✓ Code executed (no Table operations detected)');
+        setStatusMessage('Code executed (no Table operations detected)');
       }
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } catch (error) {
       if (token !== runTokenRef.current) return;
       const errorMessage = error instanceof Error ? error.message : String(error);
       setOutput({ stdout: '', stderr: '', error: errorMessage });
-      switchMobileView('visualization');
-      setStatusMessage('✗ Execution failed - check output below');
+      switchMobileView('notebook');
+      setStatusMessage('Execution failed, see output under the code cell');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } finally {
       if (token === runTokenRef.current) setIsRunning(false);
@@ -387,8 +414,6 @@ function App() {
     setCurrentExample(example.title);
     setOutput({ stdout: '', stderr: '' }); // Clear previous output
     switchMobileView('notebook');
-    // Update permalink immediately when example is selected
-    setTimeout(() => updatePermalink(), 100);
   };
 
   return (
@@ -402,31 +427,24 @@ function App() {
             </div>
           </div>
           {currentExample && (
-            <span className="current-example">Currently exploring: {currentExample}</span>
+            <span className="current-example" title={currentExample}>{currentExample}</span>
           )}
         </div>
         <div className="header-controls">
           <div className="theme-switcher" role="group" aria-label="Theme">
-            <button
-              type="button"
-              className={`theme-option ${theme === 'berkeley' ? 'active' : ''}`}
-              onClick={() => setTheme('berkeley')}
-              title="Berkeley theme"
-            >
-              Berkeley
-            </button>
-            <button
-              type="button"
-              className={`theme-option ${theme === 'jupyter' ? 'active' : ''}`}
-              onClick={() => setTheme('jupyter')}
-              title="Jupyter theme"
-            >
-              Jupyter
-            </button>
+            {THEMES.map(t => (
+              <button
+                key={t}
+                type="button"
+                className={`theme-option ${theme === t ? 'active' : ''}`}
+                onClick={() => setTheme(t)}
+                aria-pressed={theme === t}
+                title={`${THEME_LABELS[t]} theme`}
+              >
+                {THEME_LABELS[t]}
+              </button>
+            ))}
           </div>
-          <span className={`status ${pyodideStatus}`}>
-            {statusMessage}
-          </span>
           {output.trace && output.trace.length > 0 && (
             <button
               className="export-button"
@@ -507,9 +525,9 @@ function App() {
             <div className="notebook-info">
               <span className="notebook-name">Notebook</span>
             </div>
-            <div className="notebook-hint">
-              Cmd+Enter to run code cell
-            </div>
+            <span className={`status ${pyodideStatus}`} role="status">
+              {statusMessage}
+            </span>
           </div>
 
           <div className="notebook-cells-wrapper">
@@ -529,6 +547,7 @@ function App() {
               editorTheme={theme === 'jupyter' ? 'data8-light' : 'data8-dark'}
               readOnlyCode={isRunning}
               onFocusCodeCell={() => editorRef.current?.focus()}
+              output={output}
             />
           </div>
         </div>

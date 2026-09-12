@@ -6,6 +6,8 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import * as monaco from 'monaco-editor';
 import type { editor as MonacoEditor } from 'monaco-editor';
+import type { PyodideOutput } from '../lib/pyodide';
+import CellOutput from './CellOutput';
 import './NotebookCells.css';
 
 interface NotebookCellsProps {
@@ -19,12 +21,19 @@ interface NotebookCellsProps {
   onStop: () => void;
   onEditorMount?: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
   onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
-  /** Monaco theme name (e.g. data8-dark, data8-light) */
+  /** Monaco theme name, defined in App's beforeMount handler */
   editorTheme?: 'data8-dark' | 'data8-light';
   readOnlyCode?: boolean;
   /** Called when user presses Shift+Enter in markdown cell to focus the code editor */
   onFocusCodeCell?: () => void;
+  /** Last run's console output, shown beneath the code cell */
+  output?: PyodideOutput;
 }
+
+/** Modifier key for the run shortcut: ⌘ on Apple platforms, Ctrl elsewhere (matches Monaco's CtrlCmd) */
+const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+const MOD_KEY = IS_APPLE ? '⌘' : 'Ctrl';
+export const RUN_SHORTCUT = `${IS_APPLE ? 'Cmd' : 'Ctrl'}+Enter`;
 
 /** iOS Safari zooms the page when focusing text below 16px, so use a larger editor font on phones */
 function useIsNarrowScreen(): boolean {
@@ -67,9 +76,10 @@ export default function NotebookCells({
   onStop,
   onEditorMount,
   onEditorWillMount,
-  editorTheme = 'data8-dark',
+  editorTheme = 'data8-light',
   readOnlyCode = false,
   onFocusCodeCell,
+  output,
 }: NotebookCellsProps) {
   const markdownTextareaRef = useRef<HTMLTextAreaElement>(null);
   const codeCellEditorRef = useRef<HTMLDivElement>(null);
@@ -93,25 +103,15 @@ export default function NotebookCells({
     }
   }, []);
 
+  // The code cell always fits its content (like a notebook cell); the panel scrolls, not the editor
   const updateCodeEditorHeight = useCallback((editor: MonacoEditor.IStandaloneCodeEditor) => {
-    const contentHeight = editor.getContentHeight();
     const padding = 24;
-    const total = contentHeight + padding;
-    let h = Math.round(Math.max(120, total));
-    // On landing page (no user interaction yet), cap height so the code cell isn't overly long
-    if (!hasUserInteractedRef.current) {
-      const maxInitial = typeof window !== 'undefined' ? Math.min(280, window.innerHeight * 0.35) : 280;
-      h = Math.min(h, maxInitial);
-    }
-    setCodeEditorHeight(h);
-    
-    // Auto-scroll to keep cursor in view when content expands (only after user has interacted)
-    if (hasUserInteractedRef.current && editor.hasTextFocus()) {
+    setCodeEditorHeight(Math.round(Math.max(120, editor.getContentHeight() + padding)));
+
+    // While typing, keep the growing cell in view without yanking the panel around
+    if (editor.hasTextFocus()) {
       requestAnimationFrame(() => {
-        const editorElement = codeCellEditorRef.current;
-        if (editorElement) {
-          editorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
+        codeCellEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
   }, []);
@@ -228,14 +228,17 @@ export default function NotebookCells({
       {/* Code cell */}
       <div className="notebook-cell notebook-cell-code">
         <div className="cell-toolbar">
-          <span className="cell-label">Code</span>
+          <div className="cell-toolbar-left">
+            <span className="cell-label">Code</span>
+            <span className="cell-hint"><kbd>{MOD_KEY}</kbd><kbd>Enter</kbd> to run</span>
+          </div>
           <div className="cell-actions">
             <button
               type="button"
               className="cell-btn cell-btn-run"
               onClick={onRun}
               disabled={!pyodideReady || isRunning}
-              title="Run cell (Ctrl+Enter)"
+              title={`Run cell (${RUN_SHORTCUT})`}
             >
               <PlayIcon />
               <span>Run</span>
@@ -261,24 +264,11 @@ export default function NotebookCells({
             onChange={(value) => onCodeChange(value || '')}
             onMount={(editor) => {
               onEditorMount?.(editor);
-              // Defer initial height so Monaco has laid out; avoids landing page showing an overly tall cell
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => updateCodeEditorHeight(editor));
-              });
-              editor.getModel()?.onDidChangeContent(() => {
-                requestAnimationFrame(() => updateCodeEditorHeight(editor));
-              });
+              updateCodeEditorHeight(editor);
+              // Fires for edits, new values (examples, shared links) and word-wrap changes on resize
+              editor.onDidContentSizeChange(() => updateCodeEditorHeight(editor));
               editor.onDidFocusEditorText(() => {
                 hasUserInteractedRef.current = true;
-                requestAnimationFrame(() => {
-                  updateCodeEditorHeight(editor);
-                  if (hasUserInteractedRef.current) {
-                    const editorElement = codeCellEditorRef.current;
-                    if (editorElement) {
-                      editorElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    }
-                  }
-                });
               });
               editor.addAction({
                 id: 'run-cell',
@@ -302,6 +292,9 @@ export default function NotebookCells({
           />
         </div>
       </div>
+
+      {/* Output: its own block so it never changes the code cell's height */}
+      {output && <CellOutput output={output} />}
     </div>
   );
 }

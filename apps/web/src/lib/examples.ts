@@ -20,14 +20,14 @@ export const examples: Example[] = [
     description: 'Choose specific columns from a table',
     category: 'basics',
     operations: ['select'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana'],
-    'Age', [20, 21, 20, 22],
-    'Major', ['CS', 'Math', 'CS', 'Physics'],
-    'GPA', [3.8, 3.6, 3.9, 3.7]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
+    'Age', make_array(20, 21, 20, 22),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics'),
+    'GPA', make_array(3.8, 3.6, 3.9, 3.7)
 )
 
 print("Original table:")
@@ -47,13 +47,13 @@ result.show()
     description: 'Keep only rows that match a condition',
     category: 'filtering',
     operations: ['where'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],
-    'Major', ['CS', 'Math', 'CS', 'Physics', 'Math'],
-    'GPA', [3.8, 3.6, 3.9, 3.7, 3.5]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve'),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math'),
+    'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5)
 )
 
 print("Original table:")
@@ -73,12 +73,12 @@ cs_students.show()
     description: 'Order rows by a column',
     category: 'sorting',
     operations: ['sort'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana'],
-    'GPA', [3.8, 3.6, 3.9, 3.7]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
+    'GPA', make_array(3.8, 3.6, 3.9, 3.7)
 )
 
 print("Original table:")
@@ -98,19 +98,19 @@ sorted_students.show()
     description: 'Add a new column to the table',
     category: 'transforming',
     operations: ['with_column'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie'],
-    'Score', [85, 92, 78]
+    'Name', make_array('Alice', 'Bob', 'Charlie'),
+    'Score', make_array(85, 92, 78)
 )
 
 print("Original table:")
 students.show()
 
 # Add a Pass/Fail column
-grades = ['Pass', 'Pass', 'Pass']
+grades = make_array('Pass', 'Pass', 'Pass')
 result = students.with_column('Grade', grades)
 
 print("\\nWith Grade column added:")
@@ -124,14 +124,14 @@ result.show()
     description: 'Remove columns from a table',
     category: 'basics',
     operations: ['drop'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie'],
-    'Age', [20, 21, 20],
-    'Major', ['CS', 'Math', 'CS'],
-    'GPA', [3.8, 3.6, 3.9]
+    'Name', make_array('Alice', 'Bob', 'Charlie'),
+    'Age', make_array(20, 21, 20),
+    'Major', make_array('CS', 'Math', 'CS'),
+    'GPA', make_array(3.8, 3.6, 3.9)
 )
 
 print("Original table:")
@@ -151,13 +151,13 @@ result.show()
     description: 'Group rows and compute statistics',
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import Table
+    code: `from datascience import *
 import numpy as np
 
 # Sales data
 sales = Table().with_columns(
-    'Product', ['Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget'],
-    'Amount', [100, 150, 120, 90, 180, 110]
+    'Product', make_array('Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget'),
+    'Amount', make_array(100, 150, 120, 90, 180, 110)
 )
 
 print("Original sales data:")
@@ -177,19 +177,19 @@ totals.show()
     description: 'Combine two tables on a common column',
     category: 'joining',
     operations: ['join'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Student names and majors
 students = Table().with_columns(
-    'ID', [1, 2, 3],
-    'Name', ['Alice', 'Bob', 'Charlie'],
-    'Major', ['CS', 'Math', 'CS']
+    'ID', make_array(1, 2, 3),
+    'Name', make_array('Alice', 'Bob', 'Charlie'),
+    'Major', make_array('CS', 'Math', 'CS')
 )
 
 # Student grades
 grades = Table().with_columns(
-    'ID', [1, 2, 3],
-    'GPA', [3.8, 3.6, 3.9]
+    'ID', make_array(1, 2, 3),
+    'GPA', make_array(3.8, 3.6, 3.9)
 )
 
 print("Students table:")
@@ -212,14 +212,14 @@ result.show()
     description: 'Combine multiple operations in sequence',
     category: 'basics',
     operations: ['select', 'where', 'sort'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve'],
-    'Major', ['CS', 'Math', 'CS', 'Physics', 'Math'],
-    'GPA', [3.8, 3.6, 3.9, 3.7, 3.5],
-    'Year', [2, 3, 2, 4, 3]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve'),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math'),
+    'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5),
+    'Year', make_array(2, 3, 2, 4, 3)
 )
 
 print("Original table:")
@@ -242,14 +242,14 @@ result.show()
     description: 'Apply multiple where conditions',
     category: 'filtering',
     operations: ['where'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'],
-    'Major', ['CS', 'Math', 'CS', 'Physics', 'Math', 'CS'],
-    'GPA', [3.8, 3.6, 3.9, 3.7, 3.5, 3.4],
-    'Year', [2, 3, 2, 4, 3, 1]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math', 'CS'),
+    'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5, 3.4),
+    'Year', make_array(2, 3, 2, 4, 3, 1)
 )
 
 print("Original table:")
@@ -276,13 +276,13 @@ high_gpa.show()
     description: 'Reshape data with pivot operations',
     category: 'transforming',
     operations: ['pivot'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sales data by region and product
 sales = Table().with_columns(
-    'Region', ['North', 'South', 'North', 'South', 'North', 'South'],
-    'Product', ['Widget', 'Widget', 'Gadget', 'Gadget', 'Widget', 'Gadget'],
-    'Sales', [100, 120, 150, 140, 110, 160]
+    'Region', make_array('North', 'South', 'North', 'South', 'North', 'South'),
+    'Product', make_array('Widget', 'Widget', 'Gadget', 'Gadget', 'Widget', 'Gadget'),
+    'Sales', make_array(100, 120, 150, 140, 110, 160)
 )
 
 print("Original sales data:")
@@ -302,13 +302,13 @@ pivoted.show()
     description: 'Group by column and compute multiple statistics',
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import Table
+    code: `from datascience import *
 import numpy as np
 
 # Student scores by major
 scores = Table().with_columns(
-    'Major', ['CS', 'Math', 'CS', 'Math', 'CS', 'Physics', 'Math'],
-    'Score', [85, 90, 92, 88, 87, 95, 89]
+    'Major', make_array('CS', 'Math', 'CS', 'Math', 'CS', 'Physics', 'Math'),
+    'Score', make_array(85, 90, 92, 88, 87, 95, 89)
 )
 
 print("Original scores:")
@@ -334,20 +334,20 @@ max_scores.show()
     description: 'Join tables with multiple matching columns',
     category: 'joining',
     operations: ['join'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Student enrollment info
 enrollment = Table().with_columns(
-    'StudentID', [1, 2, 3, 4],
-    'Course', ['CS101', 'MATH101', 'CS101', 'PHYS101'],
-    'Grade', ['A', 'B', 'A', 'A']
+    'StudentID', make_array(1, 2, 3, 4),
+    'Course', make_array('CS101', 'MATH101', 'CS101', 'PHYS101'),
+    'Grade', make_array('A', 'B', 'A', 'A')
 )
 
 # Student information
 students = Table().with_columns(
-    'StudentID', [1, 2, 3, 4],
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana'],
-    'Major', ['CS', 'Math', 'CS', 'Physics']
+    'StudentID', make_array(1, 2, 3, 4),
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics')
 )
 
 print("Enrollment table:")
@@ -370,15 +370,15 @@ result.show()
     description: 'Combine multiple advanced operations',
     category: 'basics',
     operations: ['select', 'where', 'group', 'sort', 'join'],
-    code: `from datascience import Table
+    code: `from datascience import *
 import numpy as np
 
 # Sales transactions
 transactions = Table().with_columns(
-    'Product', ['Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget', 'Gizmo'],
-    'Category', ['Electronics', 'Electronics', 'Electronics', 'Home', 'Electronics', 'Electronics', 'Home'],
-    'Amount', [100, 150, 120, 90, 180, 110, 85],
-    'Region', ['North', 'South', 'North', 'North', 'South', 'North', 'South']
+    'Product', make_array('Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget', 'Gizmo'),
+    'Category', make_array('Electronics', 'Electronics', 'Electronics', 'Home', 'Electronics', 'Electronics', 'Home'),
+    'Amount', make_array(100, 150, 120, 90, 180, 110, 85),
+    'Region', make_array('North', 'South', 'North', 'North', 'South', 'North', 'South')
 )
 
 print("Original transactions:")
@@ -402,13 +402,13 @@ result.show()
     description: 'Select a specific number of rows from a table',
     category: 'basics',
     operations: ['take'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Sample student data
 students = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace'],
-    'Age', [20, 21, 20, 22, 19, 21, 20],
-    'Major', ['CS', 'Math', 'CS', 'Physics', 'Math', 'CS', 'Physics']
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace'),
+    'Age', make_array(20, 21, 20, 22, 19, 21, 20),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math', 'CS', 'Physics')
 )
 
 print("Original table:")
@@ -428,13 +428,13 @@ sample.show()
     description: 'Reshape data with multiple dimensions',
     category: 'transforming',
     operations: ['pivot'],
-    code: `from datascience import Table
+    code: `from datascience import *
 
 # Exam scores by student, subject, and semester
 scores = Table().with_columns(
-    'Student', ['Alice', 'Bob', 'Alice', 'Bob', 'Charlie', 'Charlie'],
-    'Subject', ['Math', 'Math', 'Science', 'Science', 'Math', 'Science'],
-    'Score', [85, 90, 88, 92, 87, 89]
+    'Student', make_array('Alice', 'Bob', 'Alice', 'Bob', 'Charlie', 'Charlie'),
+    'Subject', make_array('Math', 'Math', 'Science', 'Science', 'Math', 'Science'),
+    'Score', make_array(85, 90, 88, 92, 87, 89)
 )
 
 print("Original scores:")
@@ -454,13 +454,13 @@ pivoted.show()
     description: 'Group data and apply custom aggregation functions',
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import Table
+    code: `from datascience import *
 import numpy as np
 
 # Sales data by region
 sales = Table().with_columns(
-    'Region', ['North', 'South', 'North', 'South', 'East', 'East', 'North'],
-    'Amount', [100, 150, 120, 180, 90, 110, 130]
+    'Region', make_array('North', 'South', 'North', 'South', 'East', 'East', 'North'),
+    'Amount', make_array(100, 150, 120, 180, 90, 110, 130)
 )
 
 print("Original sales:")
@@ -486,15 +486,15 @@ avg_by_region.show()
     description: 'Complete workflow: filter, group, sort, and select',
     category: 'basics',
     operations: ['where', 'group', 'sort', 'select'],
-    code: `from datascience import Table
+    code: `from datascience import *
 import numpy as np
 
 # Employee performance data
 employees = Table().with_columns(
-    'Name', ['Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'],
-    'Department', ['Sales', 'Engineering', 'Sales', 'Engineering', 'Sales', 'Engineering'],
-    'Score', [85, 92, 78, 95, 88, 90],
-    'Years', [2, 5, 1, 4, 3, 6]
+    'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'),
+    'Department', make_array('Sales', 'Engineering', 'Sales', 'Engineering', 'Sales', 'Engineering'),
+    'Score', make_array(85, 92, 78, 95, 88, 90),
+    'Years', make_array(2, 5, 1, 4, 3, 6)
 )
 
 print("Original employee data:")

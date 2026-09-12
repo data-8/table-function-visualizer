@@ -24,24 +24,24 @@ export default function TracePanel({ output, slideshowRef }: TracePanelProps) {
             <StepSlideshow ref={slideshowRef} trace={output.trace!} />
           ) : hasOutput ? (
             <div className="empty-state">
-              <h3>Code Executed</h3>
+              <h3>No table operations to show.</h3>
               <div className="trace-note">
-                <strong>Tracing Not Working</strong>
-                The tracer didn&apos;t capture any operations. Check the console output below for details.
+                <strong>The code ran, but nothing was traced</strong>
+                Only <code>datascience.Table</code> methods are visualized. Any printed output or errors appear under the code cell.
               </div>
             </div>
           ) : (
             <div className="empty-state">
-              <h3>Welcome to Table Tutor!</h3>
-              <p>Click &quot;Examples&quot; button above to see pre-built visualizations, or write your own Table operations.</p>
+              <h3>See what each Table operation does, one step at a time.</h3>
+              <p>Run the code cell and this panel walks through every operation, showing the table before and after. Pick something from Examples to start, or write your own.</p>
               <div className="example-hint">
-                <strong>Quick Example:</strong>
-                <pre>{`from datascience import Table
+                <strong>Try this</strong>
+                <pre>{`from datascience import *
 
 # Create a table
 table = Table().with_columns(
-    'name', ['Alice', 'Bob', 'Charlie'],
-    'age', [25, 30, 35]
+    'name', make_array('Alice', 'Bob', 'Charlie'),
+    'age', make_array(25, 30, 35)
 )
 
 # Try some operations
@@ -51,45 +51,6 @@ result = table.select('name')`}</pre>
           )}
         </div>
 
-        {/* Console Output - Show BELOW steps */}
-        {hasOutput && (
-          <div className="output-section-bottom">
-            <h4>Console Output</h4>
-            <div className="output-content">
-              {output.stdout && (
-                <div className="output-stdout">
-                  {output.stdout.split('\n').map((line, i) => (
-                    <div key={i} className="output-line">{line || ' '}</div>
-                  ))}
-                </div>
-              )}
-              
-              {output.stderr && (
-                <div className="output-stderr">
-                  {output.stderr.split('\n').map((line, i) => (
-                    <div key={i} className="output-line" style={{ color: '#fcd34d' }}>{line || ' '}</div>
-                  ))}
-                </div>
-              )}
-              
-              {output.error && (
-                <div className="output-error">
-                  <strong>Error:</strong>
-                  <div className="error-message">{output.error}</div>
-                  <div className="error-help">
-                    <strong>Common Issues:</strong>
-                    <ul>
-                      <li>Check for typos in column names or method calls</li>
-                      <li>Ensure you&apos;re importing Table: <code>from datascience import Table</code></li>
-                      <li>Verify column names match those in your table</li>
-                      <li>Check the console output above for more details</li>
-                    </ul>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

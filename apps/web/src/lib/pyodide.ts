@@ -168,6 +168,14 @@ print("✓ Tracer enabled and ready")
     await pyodide.runPythonAsync(`
 from datascience import *
 print("✓ datascience symbols available (Table, make_array, are, percentile, ...)")
+
+# Table.show() calls IPython.display, which has no front end here and just prints
+# "<IPython.core.display.HTML object>". Print the text rendering instead, like print(t).
+import datascience.tables as __ds_tables
+def __show_as_text(self, max_rows=0):
+    print(self.as_text(max_rows))
+__show_as_text.__doc__ = __ds_tables.Table.show.__doc__
+__ds_tables.Table.show = __show_as_text
 `);
 
     console.log('=== Package installation complete ===');
@@ -217,8 +225,34 @@ sys.stdout = __stdout_capture
 sys.stderr = __stderr_capture
 `);
 
-    // Run user code
-    await pyodide.runPythonAsync(code);
+    // Run user code inside a Python-level try/except. Pyodide's PythonError has an
+    // empty .message while stderr is redirected, so we format the traceback ourselves
+    // and keep any stdout / traced steps that happened before the failure.
+    pyodide.globals.set('__user_code', code);
+    const errorText: string | null = await pyodide.runPythonAsync(`
+import linecache as __linecache
+import traceback as __traceback
+# Register the cell source so tracebacks can quote the offending line
+__linecache.cache['<cell>'] = (len(__user_code), None, __user_code.splitlines(True), '<cell>')
+__err = None
+try:
+    # Like a notebook cell: run every statement, then echo the value of a trailing bare
+    # expression (so a cell ending in \`t\` or \`t.where(...)\` shows its table).
+    import ast as __ast
+    __tree = __ast.parse(__user_code, '<cell>')
+    __last = __tree.body.pop() if __tree.body and isinstance(__tree.body[-1], __ast.Expr) else None
+    exec(compile(__tree, '<cell>', 'exec'), globals())
+    if __last is not None:
+        __val = eval(compile(__ast.Expression(__last.value), '<cell>', 'eval'), globals())
+        if __val is not None:
+            print(repr(__val))
+except BaseException as __e:
+    __te = __traceback.TracebackException.from_exception(__e)
+    # Hide our exec() wrapper and the tracer's patched-method frames (both run from '<exec>')
+    __te.stack = __traceback.StackSummary.from_list([f for f in __te.stack if f.filename != '<exec>'])
+    __err = ''.join(__te.format())
+__err
+`);
 
     // Get captured output
     output.stdout = await pyodide.runPythonAsync(`
@@ -231,7 +265,11 @@ __stdout_capture.getvalue()
 __stderr_capture.getvalue()
 `);
 
-    // Get trace
+    if (errorText) {
+      output.error = errorText;
+    }
+
+    // Get trace (including operations that ran before an error)
     if (enableTracing) {
       try {
         const traceJson = await pyodide.runPythonAsync(`
@@ -259,7 +297,9 @@ sys.stderr = __old_stderr
       // Ignore cleanup errors
     }
 
-    output.error = error instanceof Error ? error.message : String(error);
+    console.error('Python execution error:', error);
+    const message = error instanceof Error ? error.message : String(error);
+    output.error = message || 'The code could not be run. See the browser console for details.';
   }
 
   return output;

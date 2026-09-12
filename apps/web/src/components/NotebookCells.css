@@ -1,93 +1,107 @@
-/* Jupyter-style two-cell notebook */
+/* Two-cell notebook: markdown + code */
 
 .notebook-cells-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1rem;
+  padding: 1.25rem;
   min-height: 0;
   overflow-y: auto;
 }
 
 .notebook-cell {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-card);
   overflow: hidden;
-  box-shadow: var(--shadow-card);
 }
 
-.notebook-cell-markdown .cell-label,
-.notebook-cell-code .cell-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+.cell-label {
+  font-size: 0.75rem;
+  font-weight: 500;
   color: var(--text-tertiary);
 }
 
 /* Markdown cell */
 .notebook-cell-markdown .cell-label {
-  padding: 0.5rem 1rem;
-  background: var(--bg-card);
+  padding: 0.55rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
-/* Preview-only block (default): double-tap to edit */
 .markdown-preview-only {
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
+  padding: 1rem 1.25rem 1.1rem;
+  font-size: 0.9375rem;
   line-height: 1.6;
   color: var(--text-primary);
-  background: var(--bg-card);
   min-height: 60px;
-  cursor: pointer;
+  cursor: text;
   outline: none;
 }
 
-.markdown-preview-only:focus {
-  box-shadow: inset 0 0 0 2px var(--border-strong);
+.markdown-preview-only:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--outline-focus);
 }
 
-.markdown-preview-only .markdown-preview-placeholder {
+.markdown-preview-placeholder {
   color: var(--text-tertiary);
-  font-style: italic;
 }
 
-.markdown-preview-only p { margin: 0 0 0.5rem; }
-.markdown-preview-only h1 { font-size: 1.25rem; margin: 0 0 0.5rem; color: var(--accent); }
-.markdown-preview-only h2 { font-size: 1.1rem; margin: 0.75rem 0 0.35rem; color: var(--text-primary); }
-.markdown-preview-only h3 { font-size: 1rem; margin: 0.5rem 0 0.25rem; }
-.markdown-preview-only ul, .markdown-preview-only ol { margin: 0.25rem 0 0.5rem 1rem; padding-left: 1rem; }
-.markdown-preview-only li { margin-bottom: 0.2rem; }
-.markdown-preview-only code { background: var(--accent-muted); padding: 0.15rem 0.35rem; border-radius: 4px; font-family: 'Source Code Pro', monospace; font-size: 0.85em; color: var(--accent); border: 1px solid var(--border-strong); }
-.markdown-preview-only pre { margin: 0.5rem 0; padding: 0.75rem; background: var(--bg-panel); border-radius: 6px; border: 1px solid var(--border-subtle); overflow-x: auto; font-size: 0.8rem; }
-.markdown-preview-only pre code { background: none; padding: 0; border: none; }
-.markdown-preview-only a { color: var(--text-secondary); text-decoration: underline; }
-.markdown-preview-only a:hover { color: var(--accent); }
+.markdown-preview-only p { margin: 0 0 0.6rem; }
+.markdown-preview-only p:last-child { margin-bottom: 0; }
+.markdown-preview-only h1,
+.markdown-preview-only h2,
+.markdown-preview-only h3 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.markdown-preview-only h1 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 0.6rem; }
+.markdown-preview-only h2 { font-size: 1.3rem; line-height: 1.25; margin: 0 0 0.5rem; }
+.markdown-preview-only h3 { font-size: 1.1rem; margin: 0.6rem 0 0.3rem; }
+.markdown-preview-only ul, .markdown-preview-only ol { margin: 0.25rem 0 0.6rem; padding-left: 1.4rem; }
+.markdown-preview-only li { margin-bottom: 0.35rem; }
+.markdown-preview-only li::marker { color: var(--text-tertiary); }
+.markdown-preview-only strong { font-weight: 600; }
+.markdown-preview-only code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.markdown-preview-only pre {
+  margin: 0.6rem 0;
+  padding: 0.85rem 1rem;
+  background: var(--bg-panel-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  overflow-x: auto;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+.markdown-preview-only pre code { background: none; padding: 0; }
+.markdown-preview-only a { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 2px; }
+.markdown-preview-only blockquote {
+  margin: 0.6rem 0;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-secondary);
+}
 
-/* KaTeX math: readable on dark background */
 .markdown-preview-only .katex,
 .markdown-preview-only .katex-display {
   color: var(--text-primary);
-}
-
-.markdown-preview-only .katex .mord,
-.markdown-preview-only .katex .mop,
-.markdown-preview-only .katex .mbin,
-.markdown-preview-only .katex .mrel,
-.markdown-preview-only .katex .minner,
-.markdown-preview-only .katex .mpunct {
-  color: inherit;
 }
 
 /* Edit mode: textarea + Render button */
 .markdown-cell-inner.markdown-edit-mode {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem 0.75rem;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem 0.85rem;
   min-height: 100px;
 }
 
@@ -96,43 +110,17 @@
   justify-content: flex-end;
 }
 
-.markdown-edit-mode .markdown-input {
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  border-right: none;
-}
-
-.markdown-input {
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  border-right: none;
-}
-
-.markdown-cell-inner {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0;
-  min-height: 120px;
-}
-
-@media (max-width: 900px) {
-  .markdown-cell-inner {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
-  }
-}
-
 .markdown-input {
   width: 100%;
   min-height: 80px;
-  padding: 0.75rem 1rem;
-  font-family: 'Source Code Pro', 'Courier New', monospace;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  padding: 0.75rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
   color: var(--text-primary);
   background: var(--editor-bg);
-  border: none;
-  border-right: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
   resize: vertical;
   outline: none;
 }
@@ -142,12 +130,8 @@
 }
 
 .markdown-input:focus {
-  box-shadow: inset 0 0 0 2px var(--border-strong);
-}
-
-.markdown-preview-placeholder {
-  color: var(--text-tertiary);
-  font-style: italic;
+  border-color: var(--outline-focus);
+  box-shadow: 0 0 0 3px var(--accent-muted);
 }
 
 /* Code cell */
@@ -162,59 +146,79 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.4rem 0.75rem;
-  background: var(--bg-card);
+  padding: 0.35rem 0.5rem 0.35rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.cell-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.cell-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.cell-hint kbd {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  color: var(--text-secondary);
 }
 
 .cell-actions {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .cell-btn {
-  display: inline-flex;
-  align-items: center;
+  min-height: 28px;
+  padding: 0 0.6rem;
   gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
   font-size: 0.8rem;
-  font-weight: 600;
+  font-weight: 500;
   border-radius: 6px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all 0.2s;
 }
 
-.cell-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.cell-btn svg {
+  width: 12px;
+  height: 12px;
 }
 
 .cell-btn-run {
-  background: var(--accent);
-  color: var(--accent-button-text);
-  border-color: var(--accent);
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
 }
 
 .cell-btn-run:hover:not(:disabled) {
-  filter: brightness(1.08);
-  border-color: var(--accent);
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-fg);
 }
 
 .cell-btn-stop {
-  background: rgba(180, 60, 60, 0.85);
-  color: #fff;
-  border-color: rgba(220, 82, 82, 0.6);
+  color: var(--danger);
 }
 
 .cell-btn-stop:hover:not(:disabled) {
-  background: rgba(200, 70, 70, 0.95);
-  border-color: rgba(240, 118, 118, 0.8);
+  background: var(--danger-bg);
+  border-color: var(--danger);
 }
 
 .code-cell-editor {
   min-height: 120px;
-  border-radius: 0 0 8px 8px;
   overflow: hidden;
 }
 
@@ -224,18 +228,99 @@
   background-color: var(--editor-bg) !important;
 }
 
+/* Output cell: a separate block below the code cell, like a notebook's Out[] */
+.notebook-cell-output {
+  background: var(--bg-panel-muted);
+}
+
+.notebook-cell-output .cell-label {
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.output-content {
+  padding: 0.75rem 1rem 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  max-height: 320px;
+  overflow: auto;
+  color: var(--text-primary);
+}
+
+.output-line {
+  white-space: pre;
+}
+
+.output-stderr .output-line {
+  color: var(--accent-hover);
+}
+
+.output-error {
+  margin-top: 0.5rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--danger);
+  background: var(--danger-bg);
+}
+
+.output-error > strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.output-error .error-message {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.output-error .error-help {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.output-error .error-help strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.output-error .error-help ul {
+  margin-left: 1.1rem;
+}
+
+.output-error .error-help li {
+  margin-bottom: 0.25rem;
+}
+
+.output-error .error-help code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+}
+
 @media (max-width: 768px) {
+  .cell-hint {
+    display: none; /* keyboard shortcut is meaningless on touch */
+  }
+
   .notebook-cells-container {
     padding: 0.75rem;
     gap: 0.75rem;
   }
 
   .markdown-preview-only {
-    padding: 0.75rem;
-  }
-
-  .markdown-cell-inner.markdown-edit-mode {
-    padding: 0.5rem 0.75rem 0.75rem;
+    padding: 0.85rem 1rem;
   }
 
   .markdown-input {
@@ -244,6 +329,6 @@
 
   .cell-btn {
     min-height: 2.25rem;
-    padding: 0.35rem 0.8rem;
+    padding: 0 0.8rem;
   }
 }
