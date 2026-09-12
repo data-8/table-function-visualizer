@@ -264,7 +264,7 @@ def _sub_steps_group(table, args, kwargs, input_state, output_state):
     })
 
     steps.append({
-        "message": f"Find the unique values in '{label}' — each one becomes exactly one row of the result.",
+        "message": f"Find the unique values in '{label}'. Each one becomes exactly one row of the result.",
         "detail": f"Unique values (sorted): {_fmt_list(uniq)}",
         "input_highlights": {"columns": [label]},
         "output_state": _make_state(out_cols, []),
@@ -501,13 +501,13 @@ def _sub_steps_sort(table, args, kwargs, input_state, output_state):
         if descending:
             order = order[::-1]
         steps.append({
-            "message": "Rows keep all their values — only their order changes.",
+            "message": "Rows keep all their values. Only their order changes.",
             "detail": f"New order of original row positions: {_fmt_list([int(i) + 1 for i in order])}",
             "output_highlights": {"columns": [label]},
         })
     except Exception:
         steps.append({
-            "message": "Rows keep all their values — only their order changes.",
+            "message": "Rows keep all their values. Only their order changes.",
             "output_highlights": {"columns": [label]},
         })
     return steps
@@ -547,7 +547,7 @@ def _sub_steps_join(table, args, kwargs, input_state, output_state):
             "output_state": _make_state(output_state["columns"], []),
         },
         {
-            "message": "Find the key values that appear in BOTH tables — only those rows will be joined.",
+            "message": "Find the key values that appear in BOTH tables. Only those rows will be joined.",
             "detail": f"Keys found in both tables: {_fmt_list(shared)}",
             "input_highlights": {"rows": left_match, "columns": [label]},
             "aux_table": {"label": "Second table", "state": aux_state,

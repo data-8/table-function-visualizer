@@ -14,7 +14,7 @@ import type { editor as MonacoEditor } from 'monaco-editor';
 const DEFAULT_MARKDOWN = `## How to use this notebook
 
 - **Markdown cell (this cell):** Double-tap or double-click to edit. Use **Shift+Enter** or the **Render** button to see the rendered version and (with Shift+Enter) move to the code cell.
-- **Code cell:** Write Python using \`Table\` and \`make_array\` from the \`datascience\` library. Press **Run** or **Ctrl+Enter** (**Cmd+Enter** on Mac) to execute. The right panel shows step-by-step table operations.
+- **Code cell:** Write Python using the \`datascience\` library. Press **Run** or **Ctrl+Enter** (**Cmd+Enter** on Mac) to execute. The right panel shows step-by-step table operations.
 - **Visualization:** After running, use the arrows to step through operations and **Export** to save as PDF or **Share** to copy a link.`;
 
 const DEFAULT_CODE = `from datascience import *
@@ -407,10 +407,20 @@ function App() {
     })();
   }, [isRunning]);
 
+  // Back to the starter notebook (what you see on first visit)
+  const handleResetNotebook = () => {
+    setCode(DEFAULT_CODE);
+    setMarkdown(DEFAULT_MARKDOWN);
+    setCurrentExample('');
+    setOutput({ stdout: '', stderr: '' });
+    switchMobileView('notebook');
+  };
+
   const handleSelectExample = (example: Example) => {
     console.log('Loading example:', example.title);
     console.log('Example code:', example.code);
     setCode(example.code);
+    setMarkdown(example.markdown);
     setCurrentExample(example.title);
     setOutput({ stdout: '', stderr: '' }); // Clear previous output
     switchMobileView('notebook');
@@ -596,6 +606,7 @@ function App() {
       {showGallery && (
         <ExamplesGallery
           onSelectExample={handleSelectExample}
+          onReset={handleResetNotebook}
           onClose={() => setShowGallery(false)}
         />
       )}

@@ -4,10 +4,12 @@ import './ExamplesGallery.css';
 
 interface ExamplesGalleryProps {
   onSelectExample: (example: Example) => void;
+  /** Restore the starter notebook */
+  onReset: () => void;
   onClose: () => void;
 }
 
-export default function ExamplesGallery({ onSelectExample, onClose }: ExamplesGalleryProps) {
+export default function ExamplesGallery({ onSelectExample, onReset, onClose }: ExamplesGalleryProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   const filteredExamples = selectedCategory === 'all' 
@@ -45,6 +47,27 @@ export default function ExamplesGallery({ onSelectExample, onClose }: ExamplesGa
         </div>
 
         <div className="examples-grid">
+          {selectedCategory === 'all' && (
+            <button
+              type="button"
+              className="example-card example-card-reset"
+              onClick={() => {
+                onReset();
+                onClose();
+              }}
+            >
+              <div className="example-thumbnail">
+                <div className="operation-badges">
+                  <span className="operation-badge">start here</span>
+                </div>
+              </div>
+              <div className="example-info">
+                <h3>Blank notebook</h3>
+                <p>The starter notebook you see on first visit, with instructions and a small table to edit.</p>
+                <div className="example-category">Reset</div>
+              </div>
+            </button>
+          )}
           {filteredExamples.map(example => (
             <button
               type="button"

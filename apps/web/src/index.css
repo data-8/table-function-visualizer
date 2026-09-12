@@ -24,7 +24,7 @@
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: 'pnum' on, 'lnum' on, 'liga' on;
 
-  /* Jupyter — light (default) */
+  /* Jupyter: light (default) */
   color-scheme: light;
   --bg-app: #faf9f5;
   --bg-header: #faf9f5;
@@ -75,7 +75,7 @@
   background: var(--bg-app);
 }
 
-/* Berkeley — always dark */
+/* Berkeley: always dark */
 [data-theme='berkeley'] {
   color-scheme: dark;
   --bg-app: radial-gradient(circle at top left, rgba(0, 50, 98, 0.92) 0%, rgba(0, 20, 45, 0.96) 55%, #000a1a 100%);

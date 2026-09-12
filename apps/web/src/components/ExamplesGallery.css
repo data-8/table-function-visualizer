@@ -120,6 +120,12 @@
   cursor: pointer;
 }
 
+.example-card-reset {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: transparent;
+}
+
 .example-card:hover {
   background: var(--bg-card);
   border-color: var(--text-tertiary);
