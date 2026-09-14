@@ -8,10 +8,12 @@ import NotebookCells, { type NotebookCell, type CellType } from './components/No
 import { StepCard } from './components/StepSlideshow';
 import ExamplesGallery from './components/ExamplesGallery';
 import { initPyodide, runPythonCode, stopExecutionHard, restartKernelSoft, type PyodideOutput, type TraceRecord } from './lib/pyodide';
-import { ipynbToJson } from './lib/ipynb';
+import { ipynbToJson, parseIpynb } from './lib/ipynb';
+import { encodeNotebook, decodeNotebook } from './lib/share';
 import { registerPythonCompletions, setUserNamesProvider, extractUserNames } from './lib/completions';
-import { flattenTrace } from './lib/frames';
-import { type Example } from './lib/examples';
+import { flattenTrace, type Frame } from './lib/frames';
+import { type Example, getExampleById } from './lib/examples';
+import StepSlideshow from './components/StepSlideshow';
 
 const DEFAULT_MARKDOWN = `## How to use this notebook
 
@@ -22,8 +24,11 @@ const DEFAULT_MARKDOWN = `## How to use this notebook
 const DEFAULT_CELLS: Array<{ type: CellType; source: string }> = [
   { type: 'markdown', source: DEFAULT_MARKDOWN },
   { type: 'code', source: `from datascience import *` },
-  { type: 'code', source: `students = Table().with_columns('Name', make_array('Alice', 'Bob'))
-students` },
+  { type: 'code', source: `cones = Table().with_columns(
+    'Flavor', make_array('strawberry', 'chocolate', 'vanilla'),
+    'Price', make_array(3.55, 4.75, 4.25)
+)
+cones` },
 ];
 
 let cellIdCounter = 0;
@@ -93,12 +98,30 @@ function App() {
   const [output, setOutput] = useState<PyodideOutput>({ stdout: '', stderr: '' });
   /** Every run is traced quietly; this is the trace of everything run since the last restart or Run all */
   const sessionTraceRef = useRef<TraceRecord[]>([]);
+  const sessionTraceTruncatedRef = useRef(false);
   const [isRunning, setIsRunning] = useState(false);
   const [pyodideStatus, setPyodideStatus] = useState<PyodideStatus>('loading');
   const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
   const [showGallery, setShowGallery] = useState(false);
   const [currentExample, setCurrentExample] = useState<string>('');
   const [mobileView, setMobileView] = useState<MobileView>('notebook');
+  /** Full-window visualization for lecturing (arrow keys, big type, no notebook) */
+  const [presenting, setPresenting] = useState(false);
+  /** Source lines of the step currently shown in the visualization, highlighted in its cell */
+  const [activeSite, setActiveSite] = useState<{ cellId: string; start: number; end: number } | null>(null);
+  const handleFrameChange = useCallback((frame: Frame) => {
+    const { cell, site } = frame.record;
+    setActiveSite(cell && site ? { cellId: cell, start: site.stmt_start, end: site.stmt_end } : null);
+  }, []);
+  const [predict, setPredict] = useState(false);
+  /** ?embed=1: a read-only notebook with no chrome, for iframes in the textbook or course site */
+  const [embed] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('embed') === '1';
+    } catch {
+      return false;
+    }
+  });
   const [theme, setTheme] = useState<AppTheme>(readStoredTheme);
   const [notebookWidthPercent, setNotebookWidthPercent] = useState(() => {
     if (typeof localStorage === 'undefined') return 45;
@@ -232,8 +255,7 @@ function App() {
   // itself stays clean; the link is only built when the user clicks Share.
   const buildShareUrl = useCallback(() => {
     const params = new URLSearchParams();
-    const stored: StoredCell[] = cells.map(c => ({ type: c.type, source: c.source }));
-    params.set('cells', encodeURIComponent(JSON.stringify(stored)));
+    params.set('n', encodeNotebook(cells.map(c => ({ type: c.type, source: c.source }))));
     if (currentExample) {
       params.set('example', currentExample);
     }
@@ -242,14 +264,23 @@ function App() {
 
   // On mount: a shared link wins; otherwise restore the last session from localStorage.
   // Query params are consumed and removed so the URL stays clean while editing.
+  const restoredRef = useRef(false);
   useEffect(() => {
+    // Runs once: the first pass consumes the URL params, so a second pass (React StrictMode in
+    // development re-runs effects) must not fall through to the localStorage restore
+    if (restoredRef.current) return;
+    restoredRef.current = true;
     try {
       const params = new URLSearchParams(window.location.search);
-      const cellsParam = params.get('cells');
-      const codeParam = params.get('code'); // older single-cell links
-      if (cellsParam || codeParam) {
+      const packedParam = params.get('n');
+      const cellsParam = params.get('cells'); // older links: JSON cells
+      const codeParam = params.get('code'); // oldest links: a single code cell
+      if (packedParam || cellsParam || codeParam) {
         let loaded: NotebookCell[] | null = null;
-        if (cellsParam) {
+        if (packedParam) {
+          const shared = decodeNotebook(packedParam);
+          if (shared) loaded = shared.map(c => newCell(c.source, c.type));
+        } else if (cellsParam) {
           loaded = parseStoredCells(JSON.parse(decodeURIComponent(cellsParam)));
         } else if (codeParam) {
           loaded = [newCell(decodeURIComponent(codeParam))];
@@ -274,6 +305,17 @@ function App() {
         window.history.replaceState(null, '', window.location.pathname);
         return;
       }
+      // A link to a gallery example by id (?example=filter-rows), used by embeds and the course site
+      const exampleParam = params.get('example');
+      const example = exampleParam ? getExampleById(exampleParam) : undefined;
+      if (example) {
+        setCells(exampleCells(example));
+        setNotebookVersion(v => v + 1);
+        setCurrentExample(example.title);
+        if (!embed) window.history.replaceState(null, '', window.location.pathname);
+        return;
+      }
+      if (embed) return;
       const saved = localStorage.getItem(NOTEBOOK_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as { cells?: unknown; markdown?: string; example?: string };
@@ -287,10 +329,12 @@ function App() {
     } catch (e) {
       console.error('Failed to restore notebook:', e);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Keep the current notebook in localStorage (debounced) so a reload doesn't lose work
   useEffect(() => {
+    if (embed) return;
     const timeoutId = setTimeout(() => {
       try {
         localStorage.setItem(
@@ -302,7 +346,7 @@ function App() {
       }
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [cells, currentExample]);
+  }, [cells, currentExample, embed]);
 
   // Initialize Pyodide on mount. The notebook is fully usable meanwhile: editing, examples and
   // sharing work, and a run requested before the kernel is ready is queued and starts on its own.
@@ -454,7 +498,7 @@ function App() {
   /** Run one cell in the shared kernel. Returns the result, or null if the run was superseded. */
   const executeCell = useCallback(async (cell: NotebookCell, token: number, trace: { enabled: boolean; reset: boolean }) => {
     setRunningCellId(cell.id);
-    const result = await runPythonCode(cell.source, { enableTracing: trace.enabled, resetTrace: trace.reset });
+    const result = await runPythonCode(cell.source, { enableTracing: trace.enabled, resetTrace: trace.reset, cellId: cell.id });
     if (token !== runTokenRef.current) return null;
     execCounterRef.current += 1;
     setCellOutput(cell.id, result, execCounterRef.current);
@@ -472,14 +516,19 @@ function App() {
     setOutput({ stdout: '', stderr: '', trace });
     setVisualizationVersion(v => v + 1);
     switchMobileView('visualization');
-    setStatusMessage(`Visualized ${trace.length} operation${trace.length !== 1 ? 's' : ''}`);
+    setStatusMessage(sessionTraceTruncatedRef.current
+      ? `Visualized the first ${trace.length} operations (the rest were not recorded)`
+      : `Visualized ${trace.length} operation${trace.length !== 1 ? 's' : ''}`);
     setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
   }, [switchMobileView]);
 
   /** Wrap up a run: remember its (cumulative) trace, and show it only if asked */
   const finishRun = useCallback((result: PyodideOutput | null, visualize: boolean, label: string) => {
     if (!result) return;
-    if (result.trace) sessionTraceRef.current = result.trace;
+    if (result.trace) {
+      sessionTraceRef.current = result.trace;
+      sessionTraceTruncatedRef.current = Boolean(result.traceTruncated);
+    }
     if (result.error) {
       switchMobileView('notebook');
       setStatusMessage('Execution error, see the output under the cell');
@@ -661,6 +710,54 @@ function App() {
     }));
   }, []);
 
+  const handleMoveCell = useCallback((id: string, delta: -1 | 1) => {
+    setCells(prev => {
+      const i = prev.findIndex(c => c.id === id);
+      const j = i + delta;
+      if (i === -1 || j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }, []);
+
+  /** Merge with the cell below: sources joined by a blank line; the lower cell's output is dropped */
+  const handleMergeCell = useCallback((id: string) => {
+    const i = cells.findIndex(c => c.id === id);
+    if (i === -1 || i === cells.length - 1) return false;
+    const below = cells[i + 1];
+    deletedCellsRef.current.push({ cell: below, index: i + 1 });
+    setCells(prev => {
+      const k = prev.findIndex(c => c.id === id);
+      if (k === -1 || k === prev.length - 1) return prev;
+      const merged: NotebookCell = {
+        ...prev[k],
+        source: `${prev[k].source.replace(/\s+$/, '')}\n\n${prev[k + 1].source.replace(/^\s+/, '')}`,
+        output: undefined,
+        execCount: undefined,
+      };
+      return [...prev.slice(0, k), merged, ...prev.slice(k + 2)];
+    });
+    return true;
+  }, [cells]);
+
+  /** Split at a character offset: text before stays, text after becomes a new cell of the same type */
+  const handleSplitCell = useCallback((id: string, offset: number) => {
+    const cell = cells.find(c => c.id === id);
+    if (!cell) return null;
+    const head = cell.source.slice(0, offset).replace(/\n+$/, '');
+    const tail = cell.source.slice(offset).replace(/^\n+/, '');
+    const second = newCell(tail, cell.type);
+    if (cell.type === 'markdown') second.rendered = false;
+    setCells(prev => {
+      const k = prev.findIndex(c => c.id === id);
+      if (k === -1) return prev;
+      const first: NotebookCell = { ...prev[k], source: head, output: undefined, execCount: undefined };
+      return [...prev.slice(0, k), first, second, ...prev.slice(k + 1)];
+    });
+    return second.id;
+  }, [cells]);
+
   const handleCellChange = useCallback((id: string, source: string) => {
     setCells(prev => prev.map(c => (c.id === id ? { ...c, source } : c)));
   }, []);
@@ -673,6 +770,31 @@ function App() {
   runAllRef.current = runAll;
   const runCellRef = useRef(handleRunCell);
   runCellRef.current = handleRunCell;
+
+  const presentationRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!presenting) return;
+    presentationRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPresenting(false);
+    };
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setPresenting(false);
+    };
+    window.addEventListener('keydown', onKey);
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    };
+  }, [presenting]);
+
+  const startPresentation = () => {
+    setPresenting(true);
+    // Best effort: browsers may refuse fullscreen; the overlay works either way
+    document.documentElement.requestFullscreen?.().catch(() => undefined);
+  };
 
   // Ctrl/Cmd+Enter outside an editor runs the whole notebook (inside one, Monaco runs that cell)
   useEffect(() => {
@@ -690,6 +812,8 @@ function App() {
   const clearRunState = useCallback(() => {
     execCounterRef.current = 0;
     sessionTraceRef.current = [];
+    sessionTraceTruncatedRef.current = false;
+    setActiveSite(null);
     setOutput({ stdout: '', stderr: '' });
     setCells(prev => prev.map(c => (c.type === 'code' ? { ...c, output: undefined, execCount: undefined } : c)));
   }, []);
@@ -767,6 +891,21 @@ function App() {
     }
   }, [restartKernel]);
 
+  /** Open a .ipynb chosen with the file picker: replaces the notebook, outputs included */
+  const openIpynbInputRef = useRef<HTMLInputElement>(null);
+  const handleOpenIpynb = async (file: File) => {
+    try {
+      const loaded = parseIpynb(await file.text(), () => newCell('').id);
+      openNotebook(loaded, file.name.replace(/\.ipynb$/i, ''));
+      setStatusMessage(`Opened ${file.name}`);
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    } catch (e) {
+      console.error('Failed to open notebook:', e);
+      setStatusMessage(`Could not open ${file.name}: ${e instanceof Error ? e.message : 'not a notebook'}`);
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 4000);
+    }
+  };
+
   /** Download the notebook as an .ipynb (nbformat 4.5) with outputs included */
   const handleExportIpynb = () => {
     triggerDownload(new Blob([ipynbToJson(cells)], { type: 'application/x-ipynb+json' }), `${downloadBaseName()}.ipynb`);
@@ -789,6 +928,8 @@ function App() {
     setCurrentExample(exampleTitle);
     execCounterRef.current = 0;
     sessionTraceRef.current = [];
+    sessionTraceTruncatedRef.current = false;
+    setActiveSite(null);
     setOutput({ stdout: '', stderr: '' });
     switchMobileView('notebook');
     // A kernel that is still loading is already clean; otherwise forget the previous notebook's names
@@ -805,7 +946,17 @@ function App() {
   const stepCount = output.trace?.length ? flattenTrace(output.trace).length : 0;
 
   return (
-    <div className="app">
+    <div className={`app ${embed ? 'is-embed' : ''}`}>
+      {embed ? (
+        <div className="embed-bar">
+          <span className="embed-title">
+            <code className="brand-code">datascience</code> Table Tutor{currentExample ? `: ${currentExample}` : ''}
+          </span>
+          <a className="embed-open" href={window.location.href.replace(/([?&])embed=1&?/, '$1').replace(/[?&]$/, '')} target="_blank" rel="noopener noreferrer">
+            Open in Table Tutor
+          </a>
+        </div>
+      ) : (
       <header className="header">
         <div className="header-left">
           <div className="brand">
@@ -839,13 +990,34 @@ function App() {
               onClick={() => setShowExportMenu(v => !v)}
               aria-haspopup="menu"
               aria-expanded={showExportMenu}
-              title="Export"
+              title="Open or save the notebook, export the visualization"
             >
-              Export
+              File
               <svg className="caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
             </button>
+            <input
+              ref={openIpynbInputRef}
+              type="file"
+              accept=".ipynb,application/json"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file) void handleOpenIpynb(file);
+              }}
+            />
             {showExportMenu && (
               <div className="export-menu-list rise-in" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="export-menu-item"
+                  onClick={() => { setShowExportMenu(false); openIpynbInputRef.current?.click(); }}
+                  title="Open a Jupyter notebook from your computer"
+                >
+                  <span>Open notebook (.ipynb)…</span>
+                </button>
+                <div className="export-menu-separator" role="separator" />
                 <button
                   type="button"
                   role="menuitem"
@@ -875,7 +1047,7 @@ function App() {
                   onClick={() => { setShowExportMenu(false); handleExportIpynb(); }}
                   title="Download the notebook with its outputs; opens in Jupyter"
                 >
-                  <span>Notebook (.ipynb)</span>
+                  <span>Save notebook (.ipynb)</span>
                   <span className="export-menu-hint">{cells.length} cell{cells.length !== 1 ? 's' : ''}</span>
                 </button>
               </div>
@@ -929,6 +1101,7 @@ function App() {
           </button>
         </div>
       </header>
+      )}
 
       {/* Phone-only: toggle between the two panels (hidden on desktop via CSS) */}
       <div className="mobile-view-switcher" role="tablist" aria-label="Panel">
@@ -1035,9 +1208,14 @@ function App() {
               onCopyCell={handleCopyCell}
               onPasteCell={handlePasteCell}
               onSetCellType={handleSetCellType}
+              onMoveCell={handleMoveCell}
+              onMergeCell={handleMergeCell}
+              onSplitCell={handleSplitCell}
               onInterrupt={handleStop}
               onRestartKernel={handleRestartKernel}
               runningCellId={runningCellId}
+              readOnly={embed}
+              highlight={output.trace?.length ? activeSite : null}
               kernelAvailable={pyodideStatus !== 'error'}
               onEditorWillMount={handleEditorWillMount}
               editorTheme={theme === 'jupyter' ? 'data8-light' : 'data8-dark'}
@@ -1063,8 +1241,32 @@ function App() {
         {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {/* Right: Visualization */}
-        <TracePanel output={output} slideshowRef={slideshowRef} version={visualizationVersion} />
+        <TracePanel
+          output={output}
+          slideshowRef={slideshowRef}
+          version={visualizationVersion}
+          onPresent={output.trace?.length ? startPresentation : undefined}
+          onFrameChange={handleFrameChange}
+          predict={predict}
+          onTogglePredict={() => setPredict(v => !v)}
+        />
       </div>
+
+      {/* Presentation mode: the visualization alone, full window, big type; arrow keys step */}
+      {presenting && output.trace && output.trace.length > 0 && (
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        <div className="presentation fade-in" ref={presentationRef} tabIndex={0} role="dialog" aria-label="Presentation">
+          <div className="presentation-bar">
+            <span className="presentation-title">{currentExample || 'Table Tutor'}</span>
+            <button type="button" className="presentation-exit" onClick={() => setPresenting(false)} title="Leave presentation (Esc)">
+              Exit
+            </button>
+          </div>
+          <div className="presentation-body">
+            <StepSlideshow trace={output.trace} />
+          </div>
+        </div>
+      )}
 
       {/* Hidden container for multi-step PDF export (off-screen, same layout as panel) */}
       {isExporting && output.trace && output.trace.length > 0 && (

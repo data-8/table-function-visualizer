@@ -24,10 +24,12 @@
 
 .section-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 0.15rem 0.75rem;
   padding: 0 0.15rem;
+  min-width: 0;
 }
 
 .section-title {
@@ -120,6 +122,108 @@
 .data-table.compact td.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* Arrays: a vertical stack of item blocks, each showing its 0-based position and value.
+   No header row, so it reads as a list of values rather than a table. */
+.array-view {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  padding: 0.6rem 0.75rem 0.7rem;
+  min-height: 100px;
+  min-width: 0;
+  max-width: 100%;
+  max-height: 380px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.array-caption {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.array-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.array-item {
+  display: flex;
+  align-items: stretch;
+  min-width: 6rem;
+  max-width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-card);
+  overflow: hidden;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.array-index {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.8rem;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: var(--text-tertiary);
+  background: var(--bg-table-header);
+  border-right: 1px solid var(--border-subtle);
+  padding: 0 0.3rem;
+}
+
+.array-value {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+  padding: 0.3rem 0.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.array-item.hl {
+  background: var(--hl-cell);
+  border-color: var(--accent);
+}
+
+.array-item.hl .array-value {
+  font-weight: 600;
+}
+
+.array-view.is-lit .array-item {
+  background: var(--hl-col);
+}
+
+.array-more {
+  border-style: dashed;
+  background: transparent;
+}
+
+.array-more .array-value {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+}
+
+.array-empty {
+  min-height: 2rem;
+  justify-content: center;
+}
+
+.array-placeholder {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
 }
 
 /* Sub-step highlights */
@@ -266,13 +370,44 @@ button.table-more-button:hover {
   color: var(--text-primary);
 }
 
-/* Responsive */
-@media (max-width: 1024px) {
+/* Responsive: the panel can be narrow on a wide screen (resizer dragged right), so the
+   Before/After layout follows the panel's width via a container query, not the viewport's */
+.slideshow-visualization {
+  container-type: inline-size;
+}
+
+@container (max-width: 640px) {
   .data-transformation {
     grid-template-columns: minmax(0, 1fr);
   }
 
   /* Stacked layout: keep the label/badges upright and only turn the arrow downward */
+  .transform-arrow-container {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
+    min-width: 0;
+    padding-top: 0;
+  }
+
+  .transform-arrow {
+    rotate: 90deg;
+  }
+
+  .transform-changes {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.35rem;
+  }
+}
+
+/* Same stacking for narrow viewports where the container query would not apply */
+@media (max-width: 1024px) {
+  .data-transformation {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .transform-arrow-container {
     flex-direction: row;
     flex-wrap: wrap;

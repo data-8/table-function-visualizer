@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import type { TableState, Highlights } from '../lib/pyodide';
 import './DataTransformation.css';
 
@@ -19,6 +19,12 @@ interface DataTransformationProps {
   /** Intermediate result table shown instead of `after` while an operation is being built up */
   outputOverride?: TableState;
   auxTable?: AuxTable;
+  /** Second result table, shown under the main result (e.g. the rest of a split) */
+  auxOutput?: AuxTable;
+  /** Heading for the result panel; defaults to After / Result (building) */
+  outputLabel?: string;
+  /** Rendered instead of the result (predict mode); result highlights are suppressed too */
+  outputPlaceholder?: ReactNode;
   /** True when rendering a sub-step frame: disables the legacy add/remove column diff */
   isSubStep?: boolean;
 }
@@ -51,6 +57,51 @@ export function isNumericColumn(preview: unknown[][], colIndex: number): boolean
     sawNumber = true;
   }
   return sawNumber;
+}
+
+interface ArrayViewProps {
+  state: TableState;
+  highlights?: Highlights;
+  /** Where the values came from, shown as the strip's caption (e.g. the column label) */
+  caption?: string;
+}
+
+/**
+ * An array drawn the way Data 8 draws one: a horizontal strip of item blocks with their
+ * 0-based positions, not a one-column table. `state.preview` holds one value per row.
+ */
+export function ArrayView({ state, highlights, caption }: ArrayViewProps) {
+  const items = state.preview.map(row => row[0]);
+  const more = state.num_rows - items.length;
+  const lit = new Set<number>([
+    ...(highlights?.rows ?? []),
+    ...((highlights?.cells ?? []).map(([r]) => r)),
+  ]);
+  const wholeStrip = Boolean(highlights?.columns?.length) && lit.size === 0;
+
+  return (
+    <div className={`array-view ${wholeStrip ? 'is-lit' : ''}`}>
+      {caption && <div className="array-caption">{caption}</div>}
+      {items.length === 0 ? (
+        <div className="array-strip array-empty"><span className="array-placeholder">nothing yet</span></div>
+      ) : (
+        <div className="array-strip">
+          {items.map((v, i) => (
+            <div key={i} className={`array-item ${lit.has(i) ? 'hl' : ''}`}>
+              <span className="array-index">{i}</span>
+              <span className="array-value">{formatValue(v)}</span>
+            </div>
+          ))}
+          {more > 0 && (
+            <div className="array-item array-more">
+              <span className="array-index">…</span>
+              <span className="array-value">+{more} more</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface TableViewProps {
@@ -168,6 +219,9 @@ export default function DataTransformation({
   outputHighlights,
   outputOverride,
   auxTable,
+  auxOutput,
+  outputLabel,
+  outputPlaceholder,
   isSubStep,
 }: DataTransformationProps) {
   const [showAnimation, setShowAnimation] = useState(false);
@@ -179,7 +233,8 @@ export default function DataTransformation({
   }, []);
 
   // Legacy column diffing only applies when the frame has no sub-step visuals
-  const hasSubStepVisuals = Boolean(isSubStep || inputHighlights || outputHighlights || outputOverride || auxTable);
+  // The change badges and column diff describe the result, so they are suppressed while it is hidden
+  const hasSubStepVisuals = Boolean(isSubStep || inputHighlights || outputHighlights || outputOverride || auxTable || auxOutput || outputPlaceholder);
   const columnsRemoved = hasSubStepVisuals ? [] : before.columns.filter(col => !after.columns.includes(col));
   const columnsAdded = hasSubStepVisuals ? [] : after.columns.filter(col => !before.columns.includes(col));
   const rowsChanged = before.num_rows !== after.num_rows;
@@ -190,6 +245,12 @@ export default function DataTransformation({
 
   const output = outputOverride ?? after;
   const outputIsBuilding = outputOverride !== undefined;
+  const isArray = after.kind === 'array';
+  const sizeInfo = (state: TableState) =>
+    state.kind === 'array' || (isArray && state === output)
+      ? `${state.num_rows} value${state.num_rows !== 1 ? 's' : ''}`
+      : `${state.num_rows} row${state.num_rows !== 1 ? 's' : ''} × ${state.num_columns} col${state.num_columns !== 1 ? 's' : ''}`;
+  const resultHeading = outputLabel ?? (outputIsBuilding ? 'Result (building…)' : isArray ? 'Result array' : 'After');
 
   return (
     <div className={`data-transformation ${showAnimation ? 'animated' : ''}`}>
@@ -244,16 +305,32 @@ export default function DataTransformation({
       {/* After State */}
       <div className={`transform-section after${isInitialization ? ' initialization-result' : ''}`}>
         <div className="section-header">
-          <span className="section-title">{outputIsBuilding ? 'Result (building…)' : 'After'}</span>
-          <span className="section-info">
-            {output.num_rows} rows × {output.num_columns} cols
-          </span>
+          <span className="section-title">{outputPlaceholder ? 'After' : resultHeading}</span>
+          {!outputPlaceholder && <span className="section-info">{sizeInfo(output)}</span>}
         </div>
 
-        {output.preview.length === 0 && output.columns.length === 0 ? (
+        {outputPlaceholder ? (
+          outputPlaceholder
+        ) : isArray ? (
+          <ArrayView state={output} highlights={outputHighlights} caption={output.columns[0]} />
+        ) : output.preview.length === 0 && output.columns.length === 0 ? (
           <EmptyPlaceholder text="Empty Table" subtext="Nothing here yet" />
         ) : (
           <TableView state={output} highlights={outputHighlights} addedColumns={columnsAdded} />
+        )}
+
+        {auxOutput && !outputPlaceholder && (
+          <>
+            <div className="section-header aux-header">
+              <span className="section-title">{auxOutput.label}</span>
+              <span className="section-info">{sizeInfo(auxOutput.state)}</span>
+            </div>
+            {auxOutput.state.preview.length === 0 ? (
+              <EmptyPlaceholder text="Not filled yet" subtext="Rows arrive in a later step" />
+            ) : (
+              <TableView state={auxOutput.state} highlights={auxOutput.highlights} />
+            )}
+          </>
         )}
       </div>
     </div>

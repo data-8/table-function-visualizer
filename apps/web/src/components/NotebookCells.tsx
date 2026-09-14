@@ -40,12 +40,22 @@ interface NotebookCellsProps {
   /** Paste the copied cell at `index`; returns the new id, or null if the clipboard is empty */
   onPasteCell: (index: number) => string | null;
   onSetCellType: (id: string, type: CellType) => void;
+  /** Move the cell one position up (-1) or down (+1) */
+  onMoveCell: (id: string, delta: -1 | 1) => void;
+  /** Merge the cell with the one below it; returns false if there is none */
+  onMergeCell: (id: string) => boolean;
+  /** Split the cell's source at a character offset; returns the id of the new (second) cell */
+  onSplitCell: (id: string, offset: number) => string | null;
   onInterrupt: () => void;
   onRestartKernel: () => void;
   /** id of the cell currently executing, or null */
   runningCellId: string | null;
   /** False only when Python failed to load; while it is still loading, runs are queued */
   kernelAvailable: boolean;
+  /** Embedded view: cells can be run and stepped through but not edited or rearranged */
+  readOnly?: boolean;
+  /** Lines (1-based, inclusive) of the statement behind the visualization's current step */
+  highlight?: { cellId: string; start: number; end: number } | null;
   onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
   editorTheme?: EditorTheme;
 }
@@ -102,6 +112,9 @@ interface EditKeyActions {
   onRun: () => void;
   onRunAdvance: () => void;
   onRunInsert: () => void;
+  onMove: (delta: -1 | 1) => void;
+  /** Ctrl+Shift+-: split at the cursor; the cell reports where its cursor is */
+  onSplit: (offset: number) => void;
 }
 
 function handleEditKeys(e: React.KeyboardEvent, actions: EditKeyActions): boolean {
@@ -116,6 +129,10 @@ function handleEditKeys(e: React.KeyboardEvent, actions: EditKeyActions): boolea
     actions.onRunInsert();
   } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     actions.onRun();
+  } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    actions.onMove(e.key === 'ArrowUp' ? -1 : 1);
+  } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === '-' || e.key === '_' || e.code === 'Minus')) {
+    actions.onSplit(cursorOffset(e.currentTarget as HTMLElement));
   } else {
     return false;
   }
@@ -123,6 +140,24 @@ function handleEditKeys(e: React.KeyboardEvent, actions: EditKeyActions): boolea
   e.stopPropagation();
   return true;
 }
+
+/** Character offset of the caret in the focused editor inside `root` (Monaco or a textarea) */
+function cursorOffset(root: HTMLElement): number {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement && root.contains(active) && active.classList.contains('markdown-input')) {
+    return active.selectionStart;
+  }
+  const editor = editorForRoot.get(root);
+  if (editor) {
+    const pos = editor.getPosition();
+    const model = editor.getModel();
+    if (pos && model) return model.getOffsetAt(pos);
+  }
+  return 0;
+}
+
+/** Monaco instances by the wrapper element they live in, for cursorOffset() */
+const editorForRoot = new WeakMap<HTMLElement, MonacoEditor.IStandaloneCodeEditor>();
 
 interface InsertRowProps {
   onInsert: (type: CellType) => void;
@@ -159,6 +194,9 @@ interface CodeCellProps {
   keys: EditKeyActions;
   onRun: () => void;
   kernelAvailable: boolean;
+  readOnly: boolean;
+  /** Lines to mark as the source of the current visualization step */
+  highlightLines: { start: number; end: number } | null;
   onDelete: () => void;
   onInsertBelow: (type: CellType) => void;
   onMount: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
@@ -179,6 +217,8 @@ function CodeCell({
   keys,
   onRun,
   kernelAvailable,
+  readOnly,
+  highlightLines,
   onDelete,
   onInsertBelow,
   onMount,
@@ -186,6 +226,24 @@ function CodeCell({
   const [editorHeight, setEditorHeight] = useState(60);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const monacoRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const decorationsRef = useRef<MonacoEditor.IEditorDecorationsCollection | null>(null);
+
+  // Mark the statement the visualization is showing and bring it into view
+  useEffect(() => {
+    const editor = monacoRef.current;
+    if (!editor) return;
+    if (!decorationsRef.current) decorationsRef.current = editor.createDecorationsCollection();
+    if (!highlightLines) {
+      decorationsRef.current.clear();
+      return;
+    }
+    decorationsRef.current.set([{
+      range: { startLineNumber: highlightLines.start, startColumn: 1, endLineNumber: highlightLines.end, endColumn: 1 },
+      options: { isWholeLine: true, className: 'trace-line', linesDecorationsClassName: 'trace-line-gutter' },
+    }]);
+    editor.revealLinesInCenterIfOutsideViewport(highlightLines.start, highlightLines.end);
+    wrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [highlightLines]);
   // Keep the latest callback reachable from the Monaco listener registered once on mount
   const editFocusRef = useRef(onEditFocus);
   editFocusRef.current = onEditFocus;
@@ -265,6 +323,13 @@ function CodeCell({
             onChange={(value) => onChange(value || '')}
             onMount={(editor) => {
               monacoRef.current = editor;
+              if (wrapperRef.current) editorForRoot.set(wrapperRef.current, editor);
+              if (highlightLines) {
+                decorationsRef.current = editor.createDecorationsCollection([{
+                  range: { startLineNumber: highlightLines.start, startColumn: 1, endLineNumber: highlightLines.end, endColumn: 1 },
+                  options: { isWholeLine: true, className: 'trace-line', linesDecorationsClassName: 'trace-line-gutter' },
+                }]);
+              }
               onMount(editor);
               updateHeight(editor);
               // Fires for edits, new values (examples, shared links) and word-wrap changes on resize
@@ -294,7 +359,7 @@ function CodeCell({
               suggest: { showWords: false, preview: false, snippetsPreventQuickSuggestions: true },
               scrollBeyondLastLine: false,
               automaticLayout: true,
-              readOnly: isRunning,
+              readOnly: isRunning || readOnly,
               tabSize: 4,
               wordWrap: 'on',
               padding: { top: 10, bottom: 10 },
@@ -430,10 +495,15 @@ export default function NotebookCells({
   onCopyCell,
   onPasteCell,
   onSetCellType,
+  onMoveCell,
+  onMergeCell,
+  onSplitCell,
   onInterrupt,
   onRestartKernel,
   runningCellId,
   kernelAvailable,
+  readOnly = false,
+  highlight = null,
   onEditorWillMount,
   editorTheme = 'data8-light',
 }: NotebookCellsProps) {
@@ -470,6 +540,7 @@ export default function NotebookCells({
     setSelectedId(id);
     const cell = cells.find(c => c.id === id);
     if (!cell) return;
+    if (readOnly && cell.type === 'markdown') return;
     if (cell.type === 'code') {
       const editor = editorsRef.current.get(id);
       if (editor) {
@@ -486,7 +557,7 @@ export default function NotebookCells({
       }
     }
     setPendingEdit(id);
-  }, [cells, onPatchCell]);
+  }, [cells, onPatchCell, readOnly]);
 
   // Focus an editor that was not mounted yet when edit mode was requested
   useEffect(() => {
@@ -561,12 +632,22 @@ export default function NotebookCells({
     if (neighbour) enterCommandMode(neighbour.id);
   }, [cells, indexOf, onDeleteCell, enterCommandMode]);
 
+  const splitCell = useCallback((id: string, offset: number) => {
+    const newId = onSplitCell(id, offset);
+    if (newId) {
+      setSelectedId(newId);
+      setPendingEdit(newId);
+    }
+  }, [onSplitCell]);
+
   const keyActionsFor = useCallback((id: string): EditKeyActions => ({
     onEscape: () => enterCommandMode(id),
     onRun: () => { runCell(id); enterCommandMode(id); },
     onRunAdvance: () => runAndAdvance(id),
     onRunInsert: () => runAndInsert(id),
-  }), [enterCommandMode, runCell, runAndAdvance, runAndInsert]);
+    onMove: (delta) => onMoveCell(id, delta),
+    onSplit: (offset) => splitCell(id, offset),
+  }), [enterCommandMode, runCell, runAndAdvance, runAndInsert, onMoveCell, splitCell]);
 
   /** Jupyter command-mode shortcuts; only active while the container itself has focus */
   const handleCommandKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -576,9 +657,17 @@ export default function NotebookCells({
         runCell(selectedId);
       } else if (e.key === 'Enter' && e.altKey) {
         runAndInsert(selectedId);
+      } else if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        onMoveCell(selectedId, e.key === 'ArrowUp' ? -1 : 1);
       } else {
         return;
       }
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+      onMergeCell(selectedId);
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -588,6 +677,7 @@ export default function NotebookCells({
     const now = Date.now();
     const chord = chordRef.current && now - chordRef.current.at < CHORD_MS ? chordRef.current.key : null;
     chordRef.current = null;
+    if (readOnly && !['Enter', 'ArrowUp', 'ArrowDown', 'j', 'k'].includes(e.key)) return;
     let handled = true;
 
     switch (e.key) {
@@ -656,12 +746,12 @@ export default function NotebookCells({
       e.preventDefault();
       e.stopPropagation();
     }
-  }, [selectedId, indexOf, runCell, runAndInsert, runAndAdvance, enterEditMode, selectRelative, insertAt, onSetCellType, onCopyCell, deleteCell, onPasteCell, enterCommandMode, onUndoDelete, onInterrupt, onRestartKernel]);
+  }, [selectedId, indexOf, runCell, runAndInsert, runAndAdvance, enterEditMode, selectRelative, insertAt, onSetCellType, onCopyCell, deleteCell, onPasteCell, enterCommandMode, onUndoDelete, onInterrupt, onRestartKernel, onMoveCell, onMergeCell, readOnly]);
 
   return (
     // The container is the focus target for command mode; its keys act on the selected cell.
     // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions
-    <div className="notebook-cells-container" ref={containerRef} tabIndex={0} onKeyDown={handleCommandKey} role="list" aria-label="Notebook cells">
+    <div className={`notebook-cells-container ${readOnly ? 'is-readonly' : ''}`} ref={containerRef} tabIndex={0} onKeyDown={handleCommandKey} role="list" aria-label="Notebook cells">
       {cells.map((cell, index) => {
         const selected = cell.id === selectedId;
         const common = {
@@ -682,6 +772,8 @@ export default function NotebookCells({
             {...common}
             isRunning={runningCellId === cell.id}
             kernelAvailable={kernelAvailable}
+            readOnly={readOnly}
+            highlightLines={highlight && highlight.cellId === cell.id ? { start: highlight.start, end: highlight.end } : null}
             editorTheme={editorTheme}
             fontSize={isNarrowScreen ? 16 : 14}
             onEditorWillMount={onEditorWillMount}
@@ -719,6 +811,9 @@ export default function NotebookCells({
         <span><kbd>d</kbd><kbd>d</kbd> delete</span>
         <span><kbd>m</kbd>/<kbd>y</kbd> markdown/code</span>
         <span><kbd>z</kbd> undo delete</span>
+        <span><kbd>{MOD_KEY}</kbd><kbd>Shift</kbd><kbd>↑</kbd>/<kbd>↓</kbd> move cell</span>
+        <span><kbd>Shift</kbd><kbd>M</kbd> merge with below</span>
+        <span><kbd>{MOD_KEY}</kbd><kbd>Shift</kbd><kbd>-</kbd> split at cursor</span>
         <span><kbd>0</kbd><kbd>0</kbd> restart kernel</span>
       </div>
     </div>

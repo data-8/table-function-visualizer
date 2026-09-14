@@ -3,6 +3,12 @@ import math
 _trace_enabled = False
 _trace_log = []
 _step_counter = 0
+# Only calls made directly from these code filenames are recorded; calls datascience makes
+# internally (hist -> select, shuffle -> sample, ...) are not steps a student wrote.
+_USER_FILENAMES = {'<cell>'}
+# Simulation loops can call sample() thousands of times; keep the trace bounded
+MAX_TRACE_RECORDS = 200
+_trace_truncated = False
 _original_methods = {}
 _generating = False  # guards against recursive tracing while building sub-steps
 _depth = 0  # suppresses tracing of Table methods called internally by other methods
@@ -25,9 +31,51 @@ def get_trace():
     return _trace_log.copy()
 
 def clear_trace():
-    global _trace_log, _step_counter
+    global _trace_log, _step_counter, _trace_truncated
     _trace_log = []
     _step_counter = 0
+    _trace_truncated = False
+
+def is_trace_truncated():
+    return _trace_truncated
+
+def _called_from_user_code(depth=2):
+    """True when the traced method was invoked from the notebook cell (or a function defined in it)."""
+    import sys
+    try:
+        return sys._getframe(depth).f_code.co_filename in _USER_FILENAMES
+    except ValueError:
+        return False
+
+# Statements of the cell being run, as (start_line, end_line, assigned_name_or_None); set by
+# the runner from the cell's AST so each step can say which line and which variable it belongs to
+_cell_statements = []
+
+def set_cell_statements(statements):
+    global _cell_statements
+    # innermost statement first, so a call inside a loop body maps to the body's assignment
+    _cell_statements = sorted(((int(a), int(b), t) for a, b, t in statements), key=lambda x: x[1] - x[0])
+
+def _user_call_site():
+    """Where in the cell the traced call was made: its line, the enclosing statement and its target."""
+    import sys
+    frame = sys._getframe(1)
+    while frame is not None and frame.f_code.co_filename not in _USER_FILENAMES:
+        frame = frame.f_back
+    if frame is None:
+        return None
+    line = frame.f_lineno
+    for start, end, target in _cell_statements:
+        if start <= line <= end:
+            return {"line": line, "stmt_start": start, "stmt_end": end, "target": target}
+    return {"line": line, "stmt_start": line, "stmt_end": line, "target": None}
+
+def _record(trace_record):
+    global _trace_truncated
+    if len(_trace_log) >= MAX_TRACE_RECORDS:
+        _trace_truncated = True
+        return
+    _trace_log.append(trace_record)
 
 def _json_safe(value):
     if isinstance(value, dict):
@@ -44,6 +92,11 @@ def _json_safe(value):
         return value
     return str(value)
 
+def _raw_column(table, label):
+    """Read a column without going through the (possibly traced) Table.column."""
+    original = _original_methods.get('column')
+    return original(table, label) if original else table.column(label)
+
 def _capture_table_state(table, max_rows=MAX_ROWS_PREVIEW):
     try:
         num_rows = table.num_rows
@@ -52,12 +105,18 @@ def _capture_table_state(table, max_rows=MAX_ROWS_PREVIEW):
         preview_data = []
 
         if preview_rows > 0:
+            values = {}
+            for col in columns:
+                try:
+                    values[col] = _raw_column(table, col)
+                except Exception:
+                    values[col] = None
             for i in range(preview_rows):
                 row = []
                 for col in columns:
                     try:
-                        row.append(_json_safe(table[col][i]))
-                    except:
+                        row.append(_json_safe(values[col][i]))
+                    except Exception:
                         row.append(None)
                 preview_data.append(row)
 
@@ -184,6 +243,27 @@ def _make_explanation(operation, args, kwargs, input_state, output_state):
     elif operation == "with_rows":
         added = output_state.get("num_rows", 0) - input_state.get("num_rows", 0)
         return f"Added {added} row{'s' if added != 1 else ''}. Now {output_state.get('num_rows', 0)} rows."
+    elif operation == "apply":
+        fname = _fn_display(args[0]) if args else "the function"
+        cols = [str(c) for c in args[1:]]
+        target = f"the '{cols[0]}' value" if len(cols) == 1 else (f"the values in {', '.join(repr(c) for c in cols)}" if cols else "the whole row")
+        n = output_state.get("num_rows", 0)
+        return f"Called {fname} on {target} of each of the {n} rows and collected the results in an array."
+    elif operation == "column":
+        label = output_state.get("columns", ["?"])[0]
+        n = output_state.get("num_rows", 0)
+        return f"Took the {n} values of column '{label}' as an array."
+    elif operation == "sample":
+        n = output_state.get("num_rows", 0)
+        replace = kwargs.get('with_replacement', args[1] if len(args) > 1 else True)
+        how = "with replacement, so a row can appear more than once" if replace else "without replacement"
+        return f"Drew {n} row{'s' if n != 1 else ''} at random {how}."
+    elif operation == "shuffle":
+        return "Put all the rows in a random order."
+    elif operation == "split":
+        k = args[0] if args else kwargs.get('k', '?')
+        rest = input_state.get("num_rows", 0) - output_state.get("num_rows", 0)
+        return f"Shuffled the rows, then split them: {k} in the first table, {rest} in the second."
     else:
         return f"Applied {operation}."
 
@@ -199,12 +279,12 @@ def _serialize_args(args):
 
 # ---------------------------------------------------------------------------
 # Sub-step generation: pedagogical walkthrough frames per operation.
-# Generators may only touch tables via .column()/.labels/indexing (unpatched
-# attribute access) so they never re-enter the tracer.
+# Generators read tables via _raw_column()/.labels so they never re-enter the tracer
+# (Table.column itself is traced).
 # ---------------------------------------------------------------------------
 
 def _column_values(table, label):
-    return [_json_safe(v) for v in table.column(label)]
+    return [_json_safe(v) for v in _raw_column(table, label)]
 
 def _preview_len(state):
     return len(state.get("preview", []))
@@ -497,7 +577,7 @@ def _sub_steps_sort(table, args, kwargs, input_state, output_state):
     }]
     try:
         import numpy as np
-        order = list(np.argsort(table.column(label), kind='stable'))
+        order = list(np.argsort(_raw_column(table, label), kind='stable'))
         if descending:
             order = order[::-1]
         steps.append({
@@ -602,7 +682,309 @@ def _sub_steps_with_rows(table, args, kwargs, input_state, output_state):
         "output_highlights": {"rows": new_rows},
     }]
 
+def _fn_display(fn):
+    """How to refer to fn in prose: its name, or 'the function' for a lambda."""
+    name = _fn_name(fn)
+    return "the function" if name in ("<lambda>", "function") else name
+
+def _apply_label(fn, cols):
+    """Column label for apply's result array, e.g. double(Age) or f(Name, Age) for a lambda."""
+    name = _fn_name(fn)
+    fname = "f" if name in ("<lambda>", "function") else name
+    return f"{fname}({', '.join(str(c) for c in cols)})" if cols else f"{fname}(row)"
+
+# Per-row walkthroughs show every row for small tables, otherwise the first few and a summary
+MAX_ROW_FRAMES = 6
+
+def _sub_steps_apply(table, args, kwargs, input_state, output_state):
+    if not args or not callable(args[0]):
+        return None
+    fn = args[0]
+    cols = list(args[1:])
+    if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
+        cols = list(cols[0])
+    labels = input_state["columns"]
+    for c in cols:
+        if isinstance(c, int) and 0 <= c < len(labels):
+            continue
+        if c not in labels:
+            return None
+    cols = [labels[c] if isinstance(c, int) else c for c in cols]
+    label = _apply_label(fn, cols)
+    fname = _fn_display(fn)
+    results = [row[0] for row in output_state["preview"]]
+    n_preview = min(_preview_len(input_state), len(results))
+    if n_preview == 0:
+        return None
+    col_vals = {c: _column_values(table, c) for c in cols}
+    n_total = output_state["num_rows"]
+
+    if cols:
+        what = f"the '{cols[0]}' value" if len(cols) == 1 else f"the {', '.join(repr(c) for c in cols)} values"
+        intro = (f"apply calls {fname} once per row, passing in {what}. "
+                 f"The {n_total} results are collected into an array, in row order.")
+    else:
+        intro = (f"apply calls {fname} once per row, passing in the whole row. "
+                 f"The {n_total} results are collected into an array, in row order.")
+    steps = [{
+        "message": intro,
+        "input_highlights": {"columns": cols},
+        "output_state": _make_state([label], []),
+        "output_label": "Result array",
+    }]
+
+    per_row = n_preview if n_preview <= MAX_ROW_FRAMES else MAX_ROW_FRAMES - 1
+    all_vals = {c: _column_values(table, c) for c in labels} if not cols else {}
+    for i in range(per_row):
+        if cols:
+            arg_text = ", ".join(_fmt_val(col_vals[c][i]) for c in cols)
+            message = f"Row {i + 1}: {fname} is called with {arg_text} and returns {_fmt_val(results[i])}."
+            detail = f"{label.split('(')[0]}({arg_text}) = {_fmt_val(results[i])}"
+        else:
+            row_text = ", ".join(f"{c}={_fmt_val(all_vals[c][i])}" for c in labels)
+            message = f"Row {i + 1}: {fname} is called with the whole row ({row_text}) and returns {_fmt_val(results[i])}."
+            detail = f"{label.split('(')[0]}(row {i + 1}) = {_fmt_val(results[i])}"
+        steps.append({
+            "message": message,
+            "detail": detail,
+            "input_highlights": {"rows": [i], "columns": cols},
+            "output_state": _make_state([label], [[results[k]] for k in range(i + 1)]),
+            "output_highlights": {"cells": [[i, label]]},
+            "output_label": "Result array (building)",
+        })
+    if per_row < n_preview:
+        steps.append({
+            "message": f"The same happens for the remaining {n_total - per_row} rows.",
+            "input_highlights": {"rows": list(range(per_row, n_preview)), "columns": cols},
+            "output_state": _make_state([label], [[results[k]] for k in range(n_preview)]),
+            "output_highlights": {"rows": list(range(per_row, n_preview))},
+            "output_label": "Result array (building)",
+        })
+    steps.append({
+        "message": (f"The result is an array of {n_total} values, one per row. It is not a table: to keep it, "
+                    f"assign it to a name or pass it to with_column."),
+        "output_label": "Result array",
+    })
+    return steps
+
+def _first_column_summary(input_state, idx):
+    """Short description of a row for messages, e.g. row 3 (Bob)."""
+    preview = input_state.get("preview", [])
+    if 0 <= idx < len(preview) and preview[idx]:
+        return f"row {idx + 1} ({_fmt_val(preview[idx][0])})"
+    return f"row {idx + 1}"
+
+def _sub_steps_sample(table, args, kwargs, input_state, output_state):
+    indices = _last_random.get("choice")
+    if indices is None:
+        return None
+    indices = [int(i) for i in (indices.tolist() if hasattr(indices, 'tolist') else indices)]
+    if len(indices) != output_state["num_rows"]:
+        return None
+    k = len(indices)
+    replace = kwargs.get('with_replacement', args[1] if len(args) > 1 else True)
+    weights = kwargs.get('weights', args[2] if len(args) > 2 else None)
+    n_in = _preview_len(input_state)
+    n_out = _preview_len(output_state)
+    cols = output_state["columns"]
+
+    how = ("with replacement: after each draw the row goes back, so the same row can be drawn again"
+           if replace else "without replacement: each row can be drawn at most once")
+    weighted = " Rows are drawn with the given weights, not equally." if weights is not None else ""
+    steps = [{
+        "message": f"sample draws {k} row{'s' if k != 1 else ''} at random, {how}.{weighted}",
+        "output_state": _make_state(cols, []),
+        "output_label": "Sample (building)",
+    }]
+    per_draw = n_out if n_out <= MAX_ROW_FRAMES else MAX_ROW_FRAMES - 1
+    for i in range(per_draw):
+        src = indices[i]
+        again = ""
+        if replace and src in indices[:i]:
+            again = " This row was drawn before."
+        steps.append({
+            "message": f"Draw {i + 1}: {_first_column_summary(input_state, src)} is chosen and copied into the sample.{again}",
+            "input_highlights": {"rows": [src] if src < n_in else []},
+            "output_state": _make_state(cols, output_state["preview"][:i + 1]),
+            "output_highlights": {"rows": [i]},
+            "output_label": "Sample (building)",
+        })
+    if per_draw < n_out:
+        steps.append({
+            "message": f"The remaining {k - per_draw} draws work the same way.",
+            "input_highlights": {"rows": sorted({j for j in indices[per_draw:] if j < n_in})},
+            "output_highlights": {"rows": list(range(per_draw, n_out))},
+            "output_label": "Sample",
+        })
+    steps.append({
+        "message": f"The sample is a new table of {k} row{'s' if k != 1 else ''} with the same columns.",
+        "detail": f"Original row positions drawn: {_fmt_list([i + 1 for i in indices])}",
+        "output_label": "Sample",
+    })
+    return steps
+
+def _sub_steps_shuffle(table, args, kwargs, input_state, output_state):
+    order = _last_random.get("choice")
+    if order is None:
+        return None
+    order = [int(i) for i in (order.tolist() if hasattr(order, 'tolist') else order)]
+    if len(order) != output_state["num_rows"]:
+        return None
+    n_in = _preview_len(input_state)
+    return [
+        {
+            "message": "shuffle draws every row exactly once, in a random order. No row is added, removed or changed.",
+            "output_state": _make_state(output_state["columns"], []),
+        },
+        {
+            "message": "The rows land in the order they were drawn.",
+            "detail": f"New order of original row positions: {_fmt_list([i + 1 for i in order])}",
+            "input_highlights": {"rows": [i for i in order[:_preview_len(output_state)] if i < n_in]},
+        },
+    ]
+
+def _sub_steps_split(table, args, kwargs, input_state, output_state):
+    perm = _last_random.get("permutation")
+    k = args[0] if args else kwargs.get('k')
+    if perm is None or not isinstance(k, int):
+        return None
+    perm = [int(i) for i in (perm.tolist() if hasattr(perm, 'tolist') else perm)]
+    if len(perm) != input_state["num_rows"] or output_state["num_rows"] != k:
+        return None
+    rest_state = _last_extra.get("split_rest")
+    if rest_state is None:
+        return None
+    n_in = _preview_len(input_state)
+    first_idx = perm[:k]
+    rest_idx = perm[k:]
+    n_rest = len(rest_idx)
+    rest_aux = {"label": f"Second table ({n_rest} row{'s' if n_rest != 1 else ''})", "state": rest_state}
+    return [
+        {
+            "message": (f"split({k}) shuffles the rows, then puts the first {k} into one table "
+                        f"and the remaining {n_rest} into another. Every row ends up in exactly one of them."),
+            "output_state": _make_state(output_state["columns"], []),
+            "output_label": f"First table ({k} row{'s' if k != 1 else ''})",
+            "aux_output": {"label": rest_aux["label"], "state": _make_state(rest_state["columns"], [])},
+        },
+        {
+            "message": f"The first {k} shuffled row{'s' if k != 1 else ''} (highlighted) form the first table.",
+            "detail": f"Original row positions: {_fmt_list([i + 1 for i in first_idx])}",
+            "input_highlights": {"rows": [i for i in first_idx if i < n_in]},
+            "output_highlights": {"rows": list(range(_preview_len(output_state)))},
+            "output_label": f"First table ({k} row{'s' if k != 1 else ''})",
+            "aux_output": {"label": rest_aux["label"], "state": _make_state(rest_state["columns"], [])},
+        },
+        {
+            "message": f"The other {n_rest} row{'s' if n_rest != 1 else ''} form{'s' if n_rest == 1 else ''} the second table. Together they cover every original row.",
+            "detail": f"Original row positions: {_fmt_list([i + 1 for i in rest_idx])}",
+            "input_highlights": {"rows": [i for i in rest_idx if i < n_in]},
+            "output_label": f"First table ({k} row{'s' if k != 1 else ''})",
+            "aux_output": {"label": rest_aux["label"], "state": rest_state,
+                           "highlights": {"rows": list(range(len(rest_state["preview"])))}},
+        },
+    ]
+
+# Random draws made inside the most recent traced call (numpy is wrapped while it runs),
+# plus extra results such as the second half of a split
+_last_random = {}
+_last_extra = {}
+
+_RANDOM_CAPTURE = {
+    "sample": ["choice"],
+    "shuffle": ["choice"],
+    "split": ["permutation"],
+}
+
+def _call_capturing_random(op_name, call):
+    """Run `call`, recording the first result of each numpy.random function the operation uses."""
+    _last_random.clear()
+    _last_extra.clear()
+    names = _RANDOM_CAPTURE.get(op_name)
+    if not names:
+        return call()
+    import numpy as np
+    originals = {}
+    def recorder(name, original):
+        def rec(*a, **k):
+            out = original(*a, **k)
+            _last_random.setdefault(name, out)
+            return out
+        return rec
+    for name in names:
+        originals[name] = getattr(np.random, name)
+        setattr(np.random, name, recorder(name, originals[name]))
+    try:
+        return call()
+    finally:
+        for name, original in originals.items():
+            setattr(np.random, name, original)
+
+def _result_to_state(op_name, args, result):
+    """Table results are captured as-is; apply's array becomes a one-column result; split's pair is (first, rest)."""
+    if hasattr(result, 'labels') and hasattr(result, 'num_rows'):
+        return _capture_table_state(result)
+    if op_name == "apply" and args:
+        cols = list(args[1:])
+        if len(cols) == 1 and isinstance(cols[0], (list, tuple)):
+            cols = list(cols[0])
+        label = _apply_label(args[0], cols)
+        try:
+            values = list(result)
+        except TypeError:
+            values = [result]
+        state = _make_state([label], [[_json_safe(v)] for v in values[:MAX_ROWS_PREVIEW]])
+        state["num_rows"] = len(values)
+        state["kind"] = "array"
+        return state
+    if op_name == "column" and args:
+        label = args[0]
+        try:
+            values = list(result)
+        except TypeError:
+            values = [result]
+        state = _make_state([str(label)], [[_json_safe(v)] for v in values[:MAX_ROWS_PREVIEW]])
+        state["num_rows"] = len(values)
+        state["kind"] = "array"
+        return state
+    if op_name == "split" and isinstance(result, tuple) and len(result) == 2:
+        first, rest = result
+        if hasattr(first, 'labels') and hasattr(rest, 'labels'):
+            _last_extra["split_rest"] = _capture_table_state(rest)
+            return _capture_table_state(first)
+    return {}
+
+def _sub_steps_column(table, args, kwargs, input_state, output_state):
+    if not args:
+        return None
+    label = args[0]
+    labels = input_state["columns"]
+    if isinstance(label, int) and 0 <= label < len(labels):
+        label = labels[label]
+    if label not in labels:
+        return None
+    n = output_state["num_rows"]
+    return [
+        {
+            "message": (f"column('{label}') reads the '{label}' column top to bottom and returns its "
+                        f"{n} value{'s' if n != 1 else ''} as an array."),
+            "input_highlights": {"columns": [label]},
+            "output_label": "Result array",
+        },
+        {
+            "message": "The values keep their row order. The result is an array, not a table.",
+            "input_highlights": {"columns": [label]},
+            "output_highlights": {"columns": [str(label)]},
+            "output_label": "Result array",
+        },
+    ]
+
 _SUB_STEP_GENERATORS = {
+    "column": _sub_steps_column,
+    "apply": _sub_steps_apply,
+    "sample": _sub_steps_sample,
+    "shuffle": _sub_steps_shuffle,
+    "split": _sub_steps_split,
     "group": _sub_steps_group,
     "pivot": _sub_steps_pivot,
     "where": _sub_steps_where,
@@ -631,7 +1013,7 @@ def _trace_operation(operation_name):
         def wrapper(self, *args, **kwargs):
             global _step_counter, _depth
 
-            if _generating or not _trace_enabled or _depth > 0:
+            if _generating or not _trace_enabled or _depth > 0 or not _called_from_user_code():
                 return original_method(self, *args, **kwargs)
 
             input_state = _capture_table_state(self)
@@ -639,12 +1021,13 @@ def _trace_operation(operation_name):
 
             _depth += 1
             try:
-                result = original_method(self, *args, **kwargs)
+                result = _call_capturing_random(operation_name, lambda: original_method(self, *args, **kwargs))
             finally:
                 _depth -= 1
-            output_state = {}
-            if hasattr(result, 'labels') and hasattr(result, 'num_rows'):
-                output_state = _capture_table_state(result)
+            state_args = args
+            if operation_name == "column" and args and isinstance(args[0], int) and 0 <= args[0] < len(input_state["columns"]):
+                state_args = (input_state["columns"][args[0]],) + tuple(args[1:])
+            output_state = _result_to_state(operation_name, state_args, result)
 
             # SKIP with_column entirely when starting from empty table
             # (it's always part of with_columns initialization)
@@ -669,11 +1052,12 @@ def _trace_operation(operation_name):
                     "input": input_state,
                     "output": output_state,
                     "explanation": explanation,
+                    "site": _user_call_site(),
                 }
                 sub_steps = _make_sub_steps(operation_name, self, args, kwargs, input_state, output_state)
                 if sub_steps:
                     trace_record["sub_steps"] = sub_steps
-                _trace_log.append(trace_record)
+                _record(trace_record)
 
             return result
         return wrapper
@@ -691,9 +1075,22 @@ def _patch_take():
     original = _RowTaker.__getitem__
     _original_methods['_row_taker_getitem'] = original
 
+    def _take_called_from_user_code():
+        # t.take(3) reaches __getitem__ via _RowTaker.__call__, t.take[0:3] reaches it directly
+        import sys
+        try:
+            caller = sys._getframe(2)
+        except ValueError:
+            return False
+        if caller.f_code.co_filename in _USER_FILENAMES:
+            return True
+        if caller.f_code.co_name == '__call__' and caller.f_back is not None:
+            return caller.f_back.f_code.co_filename in _USER_FILENAMES
+        return False
+
     def traced_getitem(selector, row_indices):
         global _step_counter, _depth
-        if _generating or not _trace_enabled or _depth > 0:
+        if _generating or not _trace_enabled or _depth > 0 or not _take_called_from_user_code():
             return original(selector, row_indices)
         table = selector._table
         input_state = _capture_table_state(table)
@@ -715,11 +1112,12 @@ def _patch_take():
             "input": input_state,
             "output": output_state,
             "explanation": _make_explanation("take", args, {}, input_state, output_state),
+            "site": _user_call_site(),
         }
         sub_steps = _make_sub_steps("take", table, args, {}, input_state, output_state)
         if sub_steps:
             trace_record["sub_steps"] = sub_steps
-        _trace_log.append(trace_record)
+        _record(trace_record)
         return result
 
     _RowTaker.__getitem__ = traced_getitem
@@ -730,7 +1128,8 @@ def _patch_table_methods():
     except ImportError:
         print("⚠️ datascience not found")
         return
-    operations = ["select", "drop", "with_column", "with_columns", "with_row", "with_rows", "where", "sort", "group", "join", "pivot"]
+    operations = ["select", "drop", "with_column", "with_columns", "with_row", "with_rows", "where", "sort", "group", "join", "pivot",
+                  "apply", "sample", "shuffle", "split", "column"]
     for op_name in operations:
         if hasattr(Table, op_name):
             original = getattr(Table, op_name)

@@ -203,6 +203,12 @@
   border: none;
 }
 
+.export-menu-separator {
+  height: 1px;
+  margin: 0.3rem 0.4rem;
+  background: var(--border-subtle);
+}
+
 .export-menu-hint {
   font-size: 0.72rem;
   color: var(--text-tertiary);
@@ -777,5 +783,182 @@
 }
 
 .export-pdf-container .table-more-button {
+  display: none;
+}
+
+/* ------------------------------------------------------------------
+   Presentation mode: the visualization alone, full window, larger type
+   ------------------------------------------------------------------ */
+
+.panel-actions {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.predict-toggle {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+}
+
+.predict-toggle.is-on {
+  color: var(--accent-hover);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.present-button {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+}
+
+.presentation {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  outline: none;
+}
+
+.presentation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.presentation-title {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text-secondary);
+}
+
+.presentation-exit {
+  min-height: 30px;
+  font-size: 0.8rem;
+}
+
+.presentation-body {
+  flex: 1;
+  overflow: auto;
+  padding: 2rem 4vw 3rem;
+  font-size: 1.15rem;
+}
+
+.presentation .step-slideshow {
+  max-width: 96rem;
+}
+
+.presentation .explanation-text {
+  font-size: 2.4rem;
+  line-height: 1.25;
+}
+
+.presentation .explanation-detail {
+  font-size: 1.15rem;
+}
+
+.presentation .step-badge,
+.presentation .step-operation-title code {
+  font-size: 1.1rem;
+}
+
+.presentation .data-table.compact {
+  font-size: 1.15rem;
+}
+
+.presentation .data-table.compact th {
+  font-size: 1rem;
+}
+
+.presentation .data-table.compact th,
+.presentation .data-table.compact td {
+  padding: 0.6rem 1rem;
+}
+
+.presentation .data-table-wrapper {
+  max-height: 60vh;
+}
+
+.presentation .section-title {
+  font-size: 1.1rem;
+}
+
+.presentation .transform-arrow-label {
+  font-size: 1rem;
+}
+
+.presentation .transform-arrow {
+  font-size: 2.5rem;
+}
+
+.presentation .array-value {
+  font-size: 1.1rem;
+  padding: 0.45rem 0.8rem;
+}
+
+.presentation .nav-button {
+  min-height: 44px;
+  font-size: 1.05rem;
+  min-width: 10rem;
+}
+
+.presentation .keyboard-hint {
+  font-size: 0.9rem;
+}
+
+/* ------------------------------------------------------------------
+   Embed mode (?embed=1): no chrome, read-only cells
+   ------------------------------------------------------------------ */
+
+.embed-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 1rem;
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.85rem;
+}
+
+.embed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.embed-open {
+  color: var(--accent-hover);
+  text-decoration: none;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.embed-open:hover {
+  text-decoration: underline;
+}
+
+.is-embed .mobile-view-switcher {
+  display: none;
+}
+
+.is-embed .notebook-toolbar .toolbar-button:not(.stop-button) {
+  display: none;
+}
+
+.is-readonly .cell-insert,
+.is-readonly .gutter-btn-delete,
+.is-readonly .notebook-hint {
   display: none;
 }

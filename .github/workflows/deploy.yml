@@ -34,6 +34,20 @@ jobs:
           cd apps/web
           npm ci
 
+      - name: Setup Python (tracer tests)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install datascience for tracer tests
+        run: pip install datascience==0.18.1 matplotlib numpy
+
+      - name: Lint and test
+        run: |
+          cd apps/web
+          npm run check
+
       - name: Build
         run: |
           cd apps/web

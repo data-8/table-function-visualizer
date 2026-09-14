@@ -465,3 +465,14 @@
     font-size: 16px; /* prevents iOS Safari from zooming the page on focus */
   }
 }
+
+/* The statement behind the visualization's current step */
+.monaco-editor .trace-line {
+  background: var(--hl-cell);
+}
+
+.monaco-editor .trace-line-gutter {
+  background: var(--accent);
+  width: 3px !important;
+  margin-left: 2px;
+}

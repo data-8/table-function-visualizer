@@ -11,9 +11,14 @@
   flex-direction: column;
 }
 
-/* Nested StepCard inside the slideshow shares the same column */
+/* Nested StepCard inside the slideshow shares the same column. It must not use the outer
+   auto margins: as a flex item those shrink it to its content, and the visualization
+   (a size container) has no intrinsic width. */
 .step-slideshow .step-card {
   gap: 1rem;
+  margin: 0;
+  width: 100%;
+  max-width: none;
 }
 
 /* Header: step counter on the left, operation name on the right */
@@ -91,6 +96,7 @@
 
 .slideshow-visualization {
   margin: 0;
+  width: 100%;
 }
 
 /* Navigation */
@@ -233,4 +239,101 @@
   .keyboard-hint {
     display: none;
   }
+}
+
+/* Variable receiving the step's result, e.g. "cs_students = where()" */
+.step-assigns {
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* Predict mode */
+.predict-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem 1rem;
+  background: var(--bg-panel);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-control);
+  min-height: 100px;
+}
+
+.predict-title {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.predict-hint {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.predict-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.predict-field input {
+  width: 5.5rem;
+  height: 32px;
+  padding: 0 0.5rem;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+
+.predict-field input:focus {
+  outline: 2px solid var(--outline-focus);
+  outline-offset: 1px;
+}
+
+.predict-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.predict-check {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+  font-weight: 600;
+}
+
+.predict-check:hover:not(:disabled) {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: var(--primary-fg);
+}
+
+.predict-skip {
+  color: var(--text-secondary);
+}
+
+.predict-feedback {
+  font-size: 0.9rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid;
+}
+
+.predict-feedback.is-right {
+  color: var(--success);
+  border-color: var(--success);
+  background: var(--hl-row);
+}
+
+.predict-feedback.is-wrong {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-bg);
 }

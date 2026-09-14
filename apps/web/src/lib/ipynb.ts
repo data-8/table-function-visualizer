@@ -102,3 +102,71 @@ export function buildIpynb(cells: NotebookCell[]): Record<string, unknown> {
 export function ipynbToJson(cells: NotebookCell[]): string {
   return JSON.stringify(buildIpynb(cells), null, 1) + '\n';
 }
+
+/** Text fields in nbformat may be a string or a list of lines */
+function joinText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.filter(x => typeof x === 'string').join('');
+  return '';
+}
+
+/** Jupyter stores tracebacks with ANSI colour codes (ESC [ ... m); the notebook shows plain text */
+const ANSI_CODES = new RegExp(String.fromCharCode(27) + '\\[[0-9;]*m', 'g');
+
+/**
+ * Read a Jupyter notebook (nbformat 4) into cells. Code and markdown cells are kept, with
+ * any text outputs, plots and errors, so a saved lab opens looking the way it was left.
+ * Raw cells are skipped. Throws on anything that is not a notebook.
+ */
+export function parseIpynb(json: string, makeId: () => string): NotebookCell[] {
+  const nb = JSON.parse(json) as { nbformat?: number; cells?: unknown };
+  if (!nb || nb.nbformat !== 4 || !Array.isArray(nb.cells)) {
+    throw new Error('Not a Jupyter notebook (nbformat 4)');
+  }
+  const cells: NotebookCell[] = [];
+  for (const raw of nb.cells as Array<Record<string, unknown>>) {
+    if (!raw || typeof raw !== 'object') continue;
+    const source = joinText(raw.source);
+    if (raw.cell_type === 'markdown') {
+      cells.push({ id: makeId(), type: 'markdown', source, rendered: true });
+      continue;
+    }
+    if (raw.cell_type !== 'code') continue;
+    const cell: NotebookCell = { id: makeId(), type: 'code', source };
+    if (typeof raw.execution_count === 'number') cell.execCount = raw.execution_count;
+    const outputs = Array.isArray(raw.outputs) ? (raw.outputs as Array<Record<string, unknown>>) : [];
+    if (outputs.length > 0) {
+      const out: NonNullable<NotebookCell['output']> = { stdout: '', stderr: '' };
+      for (const o of outputs) {
+        const data = (o.data ?? {}) as Record<string, unknown>;
+        switch (o.output_type) {
+          case 'stream':
+            if (o.name === 'stderr') out.stderr += joinText(o.text);
+            else out.stdout += joinText(o.text);
+            break;
+          case 'execute_result':
+            if (data['text/plain'] !== undefined) out.result = joinText(data['text/plain']);
+            break;
+          case 'display_data':
+            if (typeof data['image/png'] === 'string') {
+              const meta = (o.metadata as Record<string, unknown> | undefined)?.['image/png'] as { width?: number } | undefined;
+              (out.images ??= []).push({ png: data['image/png'].replace(/\s/g, ''), width: meta?.width ?? 576 });
+            } else if (data['text/plain'] !== undefined) {
+              out.stdout += joinText(data['text/plain']) + '\n';
+            }
+            break;
+          case 'error': {
+            const tb = Array.isArray(o.traceback) ? (o.traceback as string[]) : [];
+            const clean = tb.map(l => l.replace(ANSI_CODES, '')).join('\n');
+            out.error = clean || `${o.ename ?? 'Error'}: ${o.evalue ?? ''}`;
+            break;
+          }
+        }
+      }
+      if (out.stdout || out.stderr || out.result !== undefined || out.error || out.images) cell.output = out;
+    }
+    cells.push(cell);
+  }
+  if (cells.length === 0) throw new Error('The notebook has no code or markdown cells');
+  return cells;
+}

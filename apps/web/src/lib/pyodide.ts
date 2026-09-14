@@ -1,6 +1,10 @@
 import { loadPyodide, type PyodideInterface } from 'pyodide';
 import TRACER_CODE from './tracer.py?raw';
 
+/** Pinned so an upstream release cannot change behaviour under us; bump deliberately */
+export const PYODIDE_VERSION = '0.26.4';
+export const DATASCIENCE_VERSION = '0.18.1';
+
 let pyodideInstance: PyodideInterface | null = null;
 let loadingPromise: Promise<PyodideInterface> | null = null;
 let wheelsInstalled = false;
@@ -25,12 +29,16 @@ export interface PyodideOutput {
   images?: Array<{ png: string; width: number }>;
   error?: string;
   trace?: TraceRecord[];
+  /** True when the run produced more operations than the tracer keeps (see MAX_TRACE_RECORDS) */
+  traceTruncated?: boolean;
 }
 
 export interface RunOptions {
   enableTracing?: boolean;
   /** Start a fresh trace (true) or append to the trace of earlier cells in a Run-all (false) */
   resetTrace?: boolean;
+  /** Notebook cell being run; stamped on the trace records it produces so steps can point back at it */
+  cellId?: string;
 }
 
 export interface Highlights {
@@ -55,6 +63,10 @@ export interface SubStep {
   output_state?: TableState;
   /** Secondary input table (e.g. the right table of a join) */
   aux_table?: { label: string; state: TableState; highlights?: Highlights };
+  /** Heading for the result panel, e.g. "Result array" or "First table (3 rows)"; defaults to After */
+  output_label?: string;
+  /** Secondary result table shown under the main one (e.g. the second half of a split) */
+  aux_output?: { label: string; state: TableState; highlights?: Highlights };
 }
 
 export interface TraceRecord {
@@ -67,6 +79,12 @@ export interface TraceRecord {
   explanation: string;
   /** Pedagogical walkthrough frames; absent => single before/after frame */
   sub_steps?: SubStep[];
+  /** Where in the cell the call was made (1-based lines) and the variable the statement assigns */
+  site?: { line: number; stmt_start: number; stmt_end: number; target: string | null } | null;
+  /** Id of the notebook cell that produced this step (stamped by the runner) */
+  cell?: string;
+  /** Set on the last step of an assignment statement: the name that receives the result */
+  assigns?: string;
 }
 
 export interface TableState {
@@ -75,6 +93,8 @@ export interface TableState {
   columns: string[];
   preview: unknown[][];
   error?: string;
+  /** 'array' when the result is an array shown as one column (apply), not a real table */
+  kind?: 'array';
 }
 
 /**
@@ -94,7 +114,7 @@ export async function initPyodide(): Promise<PyodideInterface> {
     try {
       console.log('Loading Pyodide...');
       const pyodide = await loadPyodide({
-        indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/',
+        indexURL: `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VERSION}/full/`,
       });
       
       console.log('Pyodide loaded successfully');
@@ -143,7 +163,7 @@ print("Python version:", sys.version)
 print("Installing datascience...")
 
 try:
-    await micropip.install('datascience')
+    await micropip.install('datascience==${DATASCIENCE_VERSION}')
     print("✓ datascience installed successfully")
     
     # Verify import works
@@ -225,7 +245,7 @@ __baseline_globals['__baseline_globals'] = __baseline_globals
  * Execute Python code and capture output
  */
 export async function runPythonCode(code: string, options: RunOptions = {}): Promise<PyodideOutput> {
-  const { enableTracing = true, resetTrace = true } = options;
+  const { enableTracing = true, resetTrace = true, cellId } = options;
   const pyodide = await initPyodide();
 
   const output: PyodideOutput = {
@@ -237,6 +257,7 @@ export async function runPythonCode(code: string, options: RunOptions = {}): Pro
     // Setup tracing
     if (enableTracing) {
       try {
+        if (resetTrace) stepStamps.clear();
         await pyodide.runPythonAsync(`
 ${resetTrace ? 'clear_trace()' : ''}
 enable()
@@ -259,6 +280,9 @@ sys.stdout = __stdout_capture
 sys.stderr = __stderr_capture
 `);
 
+    // Records added by this run start at this index; they get stamped with the cell id below
+    const traceStart = enableTracing ? Number(await pyodide.runPythonAsync('len(get_trace())')) : 0;
+
     // Run user code inside a Python-level try/except. Pyodide's PythonError has an
     // empty .message while stderr is redirected, so we format the traceback ourselves
     // and keep any stdout / traced steps that happened before the failure.
@@ -278,6 +302,25 @@ try:
     # but keep the line count so tracebacks still point at the right line
     __user_code = '\\n'.join('' if l.lstrip().startswith('%') else l for l in __user_code.split('\\n'))
     __tree = __ast.parse(__user_code, '<cell>')
+    # Tell the tracer where each statement is and what it assigns, so steps can point back at code
+    def __target_name(node):
+        if isinstance(node, __ast.Name):
+            return node.id
+        if isinstance(node, __ast.Tuple):
+            return ', '.join(__target_name(e) or '_' for e in node.elts)
+        try:
+            return __ast.unparse(node)
+        except Exception:
+            return None
+    __stmts = []
+    for __n in __ast.walk(__tree):
+        if isinstance(__n, __ast.Assign) and __n.targets:
+            __stmts.append((__n.lineno, getattr(__n, 'end_lineno', __n.lineno), __target_name(__n.targets[0])))
+        elif isinstance(__n, (__ast.AnnAssign, __ast.AugAssign)):
+            __stmts.append((__n.lineno, getattr(__n, 'end_lineno', __n.lineno), __target_name(__n.target)))
+        elif isinstance(__n, (__ast.Expr, __ast.Return)):
+            __stmts.append((__n.lineno, getattr(__n, 'end_lineno', __n.lineno), None))
+    set_cell_statements(__stmts)
     __last = __tree.body.pop() if __tree.body and isinstance(__tree.body[-1], __ast.Expr) else None
     exec(compile(__tree, '<cell>', 'exec'), globals())
     if __last is not None:
@@ -327,9 +370,12 @@ __stderr_capture.getvalue()
 import json
 trace_data = get_trace()
 print(f"✓ Captured {len(trace_data)} operations")
-json.dumps(trace_data)
+json.dumps({"trace": trace_data, "truncated": is_trace_truncated()})
 `);
-        output.trace = JSON.parse(traceJson);
+        const parsed = JSON.parse(traceJson) as { trace: TraceRecord[]; truncated: boolean };
+        output.trace = parsed.trace;
+        if (parsed.truncated) output.traceTruncated = true;
+        if (cellId) stampCellSteps(output.trace, traceStart, cellId);
         console.log('✓ Trace retrieved:', output.trace);
       } catch (e) {
         console.error('Failed to get trace:', e);
@@ -357,11 +403,40 @@ sys.stderr = __old_stderr
 }
 
 /**
+ * Mark the records a cell run produced with the cell id, and name the variable each assignment
+ * statement ends up in on that statement's last step (a chained expression like
+ * `r = t.where(...).select(...)` is several steps but one assignment).
+ */
+// Every run re-reads the whole cumulative trace, so stamps from earlier cells are kept here
+// (by step_id) and re-applied; cleared whenever the trace is reset.
+const stepStamps = new Map<number, { cell: string; assigns?: string }>();
+
+function stampCellSteps(trace: TraceRecord[], from: number, cellId: string): void {
+  const lastOfStatement = new Map<number, TraceRecord>();
+  for (let i = from; i < trace.length; i++) {
+    const rec = trace[i];
+    stepStamps.set(rec.step_id, { cell: cellId });
+    if (rec.site) lastOfStatement.set(rec.site.stmt_start, rec);
+  }
+  for (const rec of lastOfStatement.values()) {
+    if (rec.site?.target) stepStamps.set(rec.step_id, { cell: cellId, assigns: rec.site.target });
+  }
+  for (const rec of trace) {
+    const stamp = stepStamps.get(rec.step_id);
+    if (stamp) {
+      rec.cell = stamp.cell;
+      if (stamp.assigns) rec.assigns = stamp.assigns;
+    }
+  }
+}
+
+/**
  * Restart the kernel without reloading Python: every name defined by cells is forgotten and the
  * trace is cleared, but the interpreter and installed packages stay (so it is instant).
  */
 export async function restartKernelSoft(): Promise<void> {
   const pyodide = await initPyodide();
+  stepStamps.clear();
   await pyodide.runPythonAsync(`
 for __k in list(globals()):
     if __k not in __baseline_globals:

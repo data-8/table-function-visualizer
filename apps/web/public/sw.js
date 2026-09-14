@@ -1,80 +1,66 @@
-// Service Worker for caching Pyodide and packages
-const CACHE_NAME = 'table-tutor-v1';
-const CACHE_URLS = [
-  '/',
-  '/index.html',
-];
+// Service worker: keeps the app shell available offline and caches the large Pyodide
+// downloads. Two caches with independent lifetimes:
+//   - the app cache is named after the build id (?v=...) so every deploy starts fresh;
+//   - the Pyodide cache is named after the Pyodide version (?py=...) so it survives deploys
+//     and is only refetched when Pyodide itself is upgraded.
+const params = new URL(self.location.href).searchParams;
+const APP_CACHE = `table-tutor-app-${params.get('v') || 'dev'}`;
+const PYODIDE_CACHE = `table-tutor-pyodide-${params.get('py') || 'unknown'}`;
+const KEEP = new Set([APP_CACHE, PYODIDE_CACHE]);
 
-// Install event - cache static assets
+// The base path the app is served from ("/" or "/table-function-visualizer/")
+const SCOPE = new URL(self.registration ? self.registration.scope : self.location.href).pathname;
+
+function isPyodideAsset(url) {
+  return (
+    url.hostname === 'cdn.jsdelivr.net' && url.pathname.includes('/pyodide/') ||
+    url.hostname === 'files.pythonhosted.org' ||
+    url.pathname.endsWith('.whl') ||
+    url.pathname.endsWith('.wasm')
+  );
+}
+
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Installing...');
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log('[Service Worker] Caching static assets');
-      return cache.addAll(CACHE_URLS);
-    })
+    caches.open(APP_CACHE).then((cache) => cache.addAll([SCOPE, `${SCOPE}index.html`]).catch(() => undefined))
   );
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  console.log('[Service Worker] Activating...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => {
-            console.log('[Service Worker] Deleting old cache:', name);
-            return caches.delete(name);
-          })
-      );
-    })
+    caches.keys().then((names) => Promise.all(names.filter((n) => !KEEP.has(n)).map((n) => caches.delete(n))))
   );
-  return self.clients.claim();
+  self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  
-  // Cache Pyodide files (long-term cache)
-  if (url.pathname.includes('/pyodide/') || url.pathname.includes('/packages/')) {
+
+  // Pyodide runtime and wheels: cache first, they never change for a given version
+  if (isPyodideAsset(url)) {
     event.respondWith(
-      caches.open(CACHE_NAME).then((cache) => {
-        return cache.match(event.request).then((response) => {
-          if (response) {
-            return response;
-          }
-          return fetch(event.request).then((response) => {
-            // Cache successful responses
-            if (response.status === 200) {
-              cache.put(event.request, response.clone());
-            }
-            return response;
-          });
-        });
-      })
+      caches.open(PYODIDE_CACHE).then((cache) =>
+        cache.match(event.request).then((hit) => hit || fetch(event.request).then((response) => {
+          if (response.ok) cache.put(event.request, response.clone());
+          return response;
+        }))
+      )
     );
     return;
   }
-  
-  // For other requests, try network first, then cache
+
+  // Everything else: network first, falling back to this build's cache when offline
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone the response for caching
-        const responseToCache = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
+        if (response.ok && (url.origin === self.location.origin || response.type === 'basic')) {
+          const copy = response.clone();
+          caches.open(APP_CACHE).then((cache) => cache.put(event.request, copy));
+        }
         return response;
       })
-      .catch(() => {
-        // Fallback to cache if network fails
-        return caches.match(event.request);
-      })
+      .catch(() => caches.match(event.request))
   );
 });
-
