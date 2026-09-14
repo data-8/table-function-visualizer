@@ -2,48 +2,68 @@ import type { PyodideOutput } from '../lib/pyodide';
 
 interface CellOutputProps {
   output: PyodideOutput;
+  execCount?: number;
 }
 
-/** Console output rendered beneath the code cell, like a notebook's Out[] area */
-export default function CellOutput({ output }: CellOutputProps) {
-  const hasOutput = output.stdout || output.stderr || output.error;
-  if (!hasOutput) return null;
+/**
+ * A cell's output area, laid out like a notebook: printed text has no prompt,
+ * the value of a trailing expression gets an Out[n] prompt, errors are boxed.
+ */
+export default function CellOutput({ output, execCount }: CellOutputProps) {
+  const hasStream = output.stdout || output.stderr;
+  const images = output.images ?? [];
+  if (!hasStream && !output.result && !output.error && images.length === 0) return null;
 
   return (
-    <div className="notebook-cell notebook-cell-output" aria-live="polite">
-      <div className="cell-label">Output</div>
-      <div className="output-content">
-        {output.stdout && (
-          <div className="output-stdout">
-            {output.stdout.split('\n').map((line, i) => (
-              <div key={i} className="output-line">{line || ' '}</div>
-            ))}
+    <div className="cell-output" aria-live="polite">
+      {hasStream && (
+        <div className="cell-row output-row">
+          <div className="cell-prompt" aria-hidden="true" />
+          <div className="output-body">
+            {output.stdout && <pre className="output-stream">{output.stdout.replace(/\n$/, '')}</pre>}
+            {output.stderr && <pre className="output-stream output-stderr">{output.stderr.replace(/\n$/, '')}</pre>}
           </div>
-        )}
+        </div>
+      )}
 
-        {output.stderr && (
-          <div className="output-stderr">
-            {output.stderr.split('\n').map((line, i) => (
-              <div key={i} className="output-line">{line || ' '}</div>
-            ))}
+      {images.map((image, i) => (
+        <div className="cell-row output-row" key={i}>
+          <div className="cell-prompt" aria-hidden="true" />
+          <div className="output-body">
+            <img className="output-image" src={`data:image/png;base64,${image.png}`} alt="Plot" style={{ width: image.width }} />
           </div>
-        )}
+        </div>
+      ))}
 
-        {output.error && (
-          <div className="output-error">
-            <strong>Error</strong>
-            <div className="error-message">{output.error}</div>
-            <div className="error-help">
-              <strong>Things to check</strong>
-              <ul>
-                <li>Typos in column names or method calls</li>
-                <li>Start with <code>from datascience import *</code> so <code>Table</code>, <code>make_array</code> and <code>are</code> are available</li>
-                <li>Column names match the ones in your table</li>
-              </ul>
+      {output.result && (
+        <div className="cell-row output-row">
+          <div className="cell-prompt">
+            <span className="prompt-label prompt-out">Out[{execCount ?? ' '}]:</span>
+          </div>
+          <div className="output-body">
+            <pre className="output-result">{output.result}</pre>
+          </div>
+        </div>
+      )}
+
+      {output.error && (
+        <div className="cell-row output-row">
+          <div className="cell-prompt" aria-hidden="true" />
+          <div className="output-body">
+            <div className="output-error">
+              <pre className="error-message">{output.error.replace(/\n$/, '')}</pre>
+              <div className="error-help">
+                <strong>Things to check</strong>
+                <ul>
+                  <li>Typos in column names or method calls</li>
+                  <li>Cells above this one have been run, so the names they define exist</li>
+                  <li>Start with <code>from datascience import *</code> so <code>Table</code>, <code>make_array</code> and <code>are</code> are available</li>
+                </ul>
+              </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

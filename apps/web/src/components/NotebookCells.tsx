@@ -4,36 +4,59 @@ import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import * as monaco from 'monaco-editor';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import type { PyodideOutput } from '../lib/pyodide';
 import CellOutput from './CellOutput';
 import './NotebookCells.css';
 
-interface NotebookCellsProps {
-  markdown: string;
-  onMarkdownChange: (value: string) => void;
-  code: string;
-  onCodeChange: (value: string) => void;
-  isRunning: boolean;
-  pyodideReady: boolean;
-  onRun: () => void;
-  onStop: () => void;
-  onEditorMount?: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
-  onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
-  /** Monaco theme name, defined in App's beforeMount handler */
-  editorTheme?: 'data8-dark' | 'data8-light';
-  readOnlyCode?: boolean;
-  /** Called when user presses Shift+Enter in markdown cell to focus the code editor */
-  onFocusCodeCell?: () => void;
-  /** Last run's console output, shown beneath the code cell */
+export type CellType = 'code' | 'markdown';
+
+/** One cell of the notebook */
+export interface NotebookCell {
+  id: string;
+  type: CellType;
+  source: string;
+  /** Code cells: output of the most recent run */
   output?: PyodideOutput;
+  /** Code cells: execution counter shown as In [n] / Out[n]; undefined until the cell has run */
+  execCount?: number;
+  /** Markdown cells: false while the source is being edited, true once rendered */
+  rendered?: boolean;
+}
+
+export type EditorTheme = 'data8-dark' | 'data8-light';
+
+interface NotebookCellsProps {
+  cells: NotebookCell[];
+  onCellChange: (id: string, source: string) => void;
+  onPatchCell: (id: string, patch: Partial<NotebookCell>) => void;
+  onRunCell: (id: string) => void;
+  /** Insert a new cell at `index`; returns its id so the notebook can select it */
+  onInsertCell: (index: number, type: CellType) => string;
+  onDeleteCell: (id: string) => void;
+  /** Restore the most recently deleted cell; returns its id, or null if nothing to restore */
+  onUndoDelete: () => string | null;
+  onCopyCell: (id: string) => void;
+  /** Paste the copied cell at `index`; returns the new id, or null if the clipboard is empty */
+  onPasteCell: (index: number) => string | null;
+  onSetCellType: (id: string, type: CellType) => void;
+  onInterrupt: () => void;
+  onRestartKernel: () => void;
+  /** id of the cell currently executing, or null */
+  runningCellId: string | null;
+  /** False only when Python failed to load; while it is still loading, runs are queued */
+  kernelAvailable: boolean;
+  onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
+  editorTheme?: EditorTheme;
 }
 
 /** Modifier key for the run shortcut: ⌘ on Apple platforms, Ctrl elsewhere (matches Monaco's CtrlCmd) */
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
-const MOD_KEY = IS_APPLE ? '⌘' : 'Ctrl';
+export const MOD_KEY = IS_APPLE ? '⌘' : 'Ctrl';
 export const RUN_SHORTCUT = `${IS_APPLE ? 'Cmd' : 'Ctrl'}+Enter`;
+
+/** Two-key chords (d d, i i, 0 0) must be completed within this window */
+const CHORD_MS = 800;
 
 /** iOS Safari zooms the page when focusing text below 16px, so use a larger editor font on phones */
 function useIsNarrowScreen(): boolean {
@@ -57,244 +80,647 @@ function PlayIcon() {
   );
 }
 
-function StopIcon() {
+function PlusIcon() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <rect x="6" y="6" width="12" height="12" rx="1" />
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }
 
-export default function NotebookCells({
-  markdown,
-  onMarkdownChange,
-  code,
-  onCodeChange,
+function CloseIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
+/** Editor-side chords shared by code and markdown cells. Returns true when handled. */
+interface EditKeyActions {
+  onEscape: () => void;
+  onRun: () => void;
+  onRunAdvance: () => void;
+  onRunInsert: () => void;
+}
+
+function handleEditKeys(e: React.KeyboardEvent, actions: EditKeyActions): boolean {
+  if (e.key === 'Escape') {
+    // Like Jupyter: Esc first closes an open completion or parameter popup, then leaves edit mode
+    const popupOpen = (e.currentTarget as HTMLElement).querySelector('.suggest-widget.visible, .parameter-hints-widget.visible');
+    if (popupOpen) return false;
+    actions.onEscape();
+  } else if (e.key === 'Enter' && e.shiftKey) {
+    actions.onRunAdvance();
+  } else if (e.key === 'Enter' && e.altKey) {
+    actions.onRunInsert();
+  } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    actions.onRun();
+  } else {
+    return false;
+  }
+  e.preventDefault();
+  e.stopPropagation();
+  return true;
+}
+
+interface InsertRowProps {
+  onInsert: (type: CellType) => void;
+  disabled: boolean;
+}
+
+function InsertRow({ onInsert, disabled }: InsertRowProps) {
+  return (
+    <div className="cell-insert">
+      <button type="button" className="insert-btn" onClick={() => onInsert('code')} disabled={disabled} title="Insert a code cell below (b)">
+        <PlusIcon />
+        <span>Code</span>
+      </button>
+      <button type="button" className="insert-btn" onClick={() => onInsert('markdown')} disabled={disabled} title="Insert a markdown cell below">
+        <PlusIcon />
+        <span>Markdown</span>
+      </button>
+    </div>
+  );
+}
+
+interface CodeCellProps {
+  cell: NotebookCell;
+  selected: boolean;
+  isRunning: boolean;
+  anyRunning: boolean;
+  canDelete: boolean;
+  editorTheme: EditorTheme;
+  fontSize: number;
+  onEditorWillMount?: (monaco: typeof import('monaco-editor')) => void;
+  onChange: (source: string) => void;
+  onSelect: () => void;
+  onEditFocus: () => void;
+  keys: EditKeyActions;
+  onRun: () => void;
+  kernelAvailable: boolean;
+  onDelete: () => void;
+  onInsertBelow: (type: CellType) => void;
+  onMount: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
+}
+
+function CodeCell({
+  cell,
+  selected,
   isRunning,
-  pyodideReady,
-  onRun,
-  onStop,
-  onEditorMount,
+  anyRunning,
+  canDelete,
+  editorTheme,
+  fontSize,
   onEditorWillMount,
-  editorTheme = 'data8-light',
-  readOnlyCode = false,
-  onFocusCodeCell,
-  output,
-}: NotebookCellsProps) {
-  const markdownTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const codeCellEditorRef = useRef<HTMLDivElement>(null);
-  const notebookContainerRef = useRef<HTMLDivElement>(null);
-  const [isMarkdownEditing, setIsMarkdownEditing] = useState(false);
-  const [codeEditorHeight, setCodeEditorHeight] = useState(120);
-  const hasUserInteractedRef = useRef(false);
-  const isNarrowScreen = useIsNarrowScreen();
+  onChange,
+  onSelect,
+  onEditFocus,
+  keys,
+  onRun,
+  kernelAvailable,
+  onDelete,
+  onInsertBelow,
+  onMount,
+}: CodeCellProps) {
+  const [editorHeight, setEditorHeight] = useState(60);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const monacoRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  // Keep the latest callback reachable from the Monaco listener registered once on mount
+  const editFocusRef = useRef(onEditFocus);
+  editFocusRef.current = onEditFocus;
 
-  const resizeMarkdownTextarea = useCallback(() => {
-    const ta = markdownTextareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${ta.scrollHeight}px`;
-    
-    // Auto-scroll to keep cursor in view when content expands (only after user has interacted)
-    if (hasUserInteractedRef.current && document.activeElement === ta) {
-      requestAnimationFrame(() => {
-        ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      });
-    }
-  }, []);
-
-  // The code cell always fits its content (like a notebook cell); the panel scrolls, not the editor
-  const updateCodeEditorHeight = useCallback((editor: MonacoEditor.IStandaloneCodeEditor) => {
-    const padding = 24;
-    setCodeEditorHeight(Math.round(Math.max(120, editor.getContentHeight() + padding)));
-
-    // While typing, keep the growing cell in view without yanking the panel around
+  // The cell always fits its content (like a notebook cell); the panel scrolls, not the editor
+  const updateHeight = useCallback((editor: MonacoEditor.IStandaloneCodeEditor) => {
+    const padding = 20;
+    setEditorHeight(Math.round(Math.max(60, editor.getContentHeight() + padding)));
     if (editor.hasTextFocus()) {
       requestAnimationFrame(() => {
-        codeCellEditorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        wrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       });
     }
   }, []);
 
-  const enterEditMode = useCallback(() => {
-    hasUserInteractedRef.current = true;
-    setIsMarkdownEditing(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isMarkdownEditing) return;
-    const ta = markdownTextareaRef.current;
-    if (!ta) return;
-    ta.focus();
-    const id = requestAnimationFrame(() => {
-      resizeMarkdownTextarea();
-      // Ensure the textarea is visible when entering edit mode (user just double-clicked)
-      if (hasUserInteractedRef.current) {
-        ta.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }
-    });
-    return () => cancelAnimationFrame(id);
-  }, [isMarkdownEditing, resizeMarkdownTextarea]);
-
-  useEffect(() => {
-    const ta = markdownTextareaRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${ta.scrollHeight}px`;
-  }, [markdown]);
-
-  const exitEditMode = useCallback(() => {
-    setIsMarkdownEditing(false);
-  }, []);
-
-  const handleCodeCellWheel = useCallback((e: React.WheelEvent) => {
-    const container = notebookContainerRef.current;
-    if (!container) return;
-    container.scrollTop += e.deltaY;
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  const handleMarkdownKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.shiftKey && e.key === 'Enter') {
-        e.preventDefault();
-        hasUserInteractedRef.current = true; // so code cell scroll runs when we focus it
-        exitEditMode();
-        onFocusCodeCell?.();
-      }
-    },
-    [exitEditMode, onFocusCodeCell]
-  );
+  const prompt = isRunning ? 'In [*]:' : `In [${cell.execCount ?? ' '}]:`;
 
   return (
-    <div className="notebook-cells-container" ref={notebookContainerRef}>
-      {/* Markdown cell */}
-      <div className="notebook-cell notebook-cell-markdown">
-        <div className="cell-label">Markdown</div>
-        {!isMarkdownEditing ? (
-          <div
-            className="markdown-preview-only"
-            role="button"
-            tabIndex={0}
-            onDoubleClick={enterEditMode}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                enterEditMode();
-              }
-            }}
-            aria-label="Double-tap or press Enter to edit markdown"
-          >
-            {markdown.trim() ? (
-              <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
-                {markdown}
-              </ReactMarkdown>
-            ) : (
-              <span className="markdown-preview-placeholder">Double-tap to add markdown</span>
-            )}
-          </div>
-        ) : (
-          <div className="markdown-cell-inner markdown-edit-mode">
-            <textarea
-              ref={markdownTextareaRef}
-              className="markdown-input"
-              value={markdown}
-              onChange={(e) => {
-                hasUserInteractedRef.current = true;
-                onMarkdownChange(e.target.value);
-                resizeMarkdownTextarea();
-              }}
-              onKeyDown={handleMarkdownKeyDown}
-              placeholder="Write supporting text in **Markdown**..."
-              rows={4}
-              spellCheck="false"
-            />
-            <div className="markdown-edit-actions">
-              <button
-                type="button"
-                className="cell-btn cell-btn-run"
-                onClick={exitEditMode}
-                title="Render markdown (Shift+Enter)"
-              >
-                <PlayIcon />
-                <span>Render</span>
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Code cell */}
-      <div className="notebook-cell notebook-cell-code">
-        <div className="cell-toolbar">
-          <div className="cell-toolbar-left">
-            <span className="cell-label">Code</span>
-            <span className="cell-hint"><kbd>{MOD_KEY}</kbd><kbd>Enter</kbd> to run</span>
-          </div>
-          <div className="cell-actions">
+    <div className={`nb-cell code-cell ${selected ? 'selected' : ''} ${isRunning ? 'is-running' : ''}`} data-cell-id={cell.id}>
+      <div className="cell-row">
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+        <div className="cell-prompt" onMouseDown={(e) => { e.preventDefault(); onSelect(); }}>
+          <span className="prompt-label">{prompt}</span>
+          <div className="cell-gutter-actions">
             <button
               type="button"
-              className="cell-btn cell-btn-run"
+              className="gutter-btn gutter-btn-run"
               onClick={onRun}
-              disabled={!pyodideReady || isRunning}
+              disabled={!kernelAvailable || anyRunning}
               title={`Run cell (${RUN_SHORTCUT})`}
+              aria-label="Run cell"
             >
               <PlayIcon />
-              <span>Run</span>
             </button>
-            <button
-              type="button"
-              className="cell-btn cell-btn-stop"
-              onClick={onStop}
-              disabled={!isRunning}
-              title="Stop execution"
-            >
-              <StopIcon />
-              <span>Stop</span>
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                className="gutter-btn gutter-btn-delete"
+                onClick={onDelete}
+                disabled={anyRunning}
+                title="Delete cell (d d)"
+                aria-label="Delete cell"
+              >
+                <CloseIcon />
+              </button>
+            )}
           </div>
         </div>
-        <div className="code-cell-editor" ref={codeCellEditorRef} onWheel={handleCodeCellWheel}>
+        {/* Intercept the run chords before Monaco's own Ctrl+Enter (insert line) binding sees them */}
+        <div
+          className="cell-editor"
+          ref={wrapperRef}
+          onKeyDownCapture={(e) => {
+            if (handleEditKeys(e, keys)) return;
+            // Tab after a name or a dot opens completions (Jupyter's behaviour); elsewhere Tab indents,
+            // and with the list already open Monaco's own Tab accepts the highlighted entry
+            if (e.key === 'Tab' && !e.shiftKey && monacoRef.current) {
+              const editor = monacoRef.current;
+              const popupOpen = e.currentTarget.querySelector('.suggest-widget.visible');
+              const pos = editor.getPosition();
+              if (!popupOpen && pos) {
+                const before = editor.getModel()?.getLineContent(pos.lineNumber).slice(0, pos.column - 1) ?? '';
+                if (/[\w.]$/.test(before)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  editor.trigger('keyboard', 'editor.action.triggerSuggest', {});
+                }
+              }
+            }
+          }}
+        >
           <Editor
-            height={codeEditorHeight}
+            height={editorHeight}
             defaultLanguage="python"
-            value={code}
+            value={cell.source}
             beforeMount={onEditorWillMount}
-            onChange={(value) => onCodeChange(value || '')}
+            onChange={(value) => onChange(value || '')}
             onMount={(editor) => {
-              onEditorMount?.(editor);
-              updateCodeEditorHeight(editor);
+              monacoRef.current = editor;
+              onMount(editor);
+              updateHeight(editor);
               // Fires for edits, new values (examples, shared links) and word-wrap changes on resize
-              editor.onDidContentSizeChange(() => updateCodeEditorHeight(editor));
-              editor.onDidFocusEditorText(() => {
-                hasUserInteractedRef.current = true;
-              });
-              editor.addAction({
-                id: 'run-cell',
-                label: 'Run cell',
-                keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-                run: () => onRun(),
-              });
+              editor.onDidContentSizeChange(() => updateHeight(editor));
+              editor.onDidFocusEditorText(() => editFocusRef.current());
             }}
             theme={editorTheme}
             options={{
               minimap: { enabled: false },
-              fontSize: isNarrowScreen ? 16 : 14,
-              lineNumbers: 'on',
+              fontSize,
+              lineNumbers: 'off',
+              glyphMargin: false,
+              folding: false,
+              lineDecorationsWidth: 16,
+              lineNumbersMinChars: 0,
+              renderLineHighlight: 'none',
+              overviewRulerLanes: 0,
+              hideCursorInOverviewRuler: true,
+              scrollbar: { vertical: 'hidden', horizontal: 'auto', alwaysConsumeMouseWheel: false },
+              fixedOverflowWidgets: true, // suggest/hover widgets escape the cell's overflow clipping
+              // Like Jupyter: completions only on Tab (see the wrapper's key handler), never while typing
+              wordBasedSuggestions: 'off',
+              quickSuggestions: false,
+              suggestOnTriggerCharacters: false,
+              acceptSuggestionOnEnter: 'on',
+              tabCompletion: 'off',
+              suggest: { showWords: false, preview: false, snippetsPreventQuickSuggestions: true },
               scrollBeyondLastLine: false,
               automaticLayout: true,
-              readOnly: readOnlyCode,
+              readOnly: isRunning,
               tabSize: 4,
               wordWrap: 'on',
-              padding: { top: 12, bottom: 12 },
+              padding: { top: 10, bottom: 10 },
             }}
           />
         </div>
       </div>
+      {cell.output && <CellOutput key={cell.execCount ?? 0} output={cell.output} execCount={cell.execCount} />}
+      <InsertRow onInsert={onInsertBelow} disabled={anyRunning} />
+    </div>
+  );
+}
 
-      {/* Output: its own block so it never changes the code cell's height */}
-      {output && <CellOutput output={output} />}
+interface MarkdownCellProps {
+  cell: NotebookCell;
+  selected: boolean;
+  editing: boolean;
+  anyRunning: boolean;
+  canDelete: boolean;
+  onChange: (source: string) => void;
+  onSelect: () => void;
+  onEdit: () => void;
+  onEditFocus: () => void;
+  keys: EditKeyActions;
+  onDelete: () => void;
+  onInsertBelow: (type: CellType) => void;
+  onMount: (el: HTMLTextAreaElement | null) => void;
+}
+
+function MarkdownCell({
+  cell,
+  selected,
+  editing,
+  anyRunning,
+  canDelete,
+  onChange,
+  onSelect,
+  onEdit,
+  onEditFocus,
+  keys,
+  onDelete,
+  onInsertBelow,
+  onMount,
+}: MarkdownCellProps) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const onMountRef = useRef(onMount);
+  onMountRef.current = onMount;
+
+  // Register the textarea once per edit session (a ref callback would re-fire on every render)
+  useEffect(() => {
+    onMountRef.current(editing ? textareaRef.current : null);
+  }, [editing]);
+
+  const resize = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, []);
+
+  useEffect(() => {
+    if (editing) resize();
+  }, [editing, cell.source, resize]);
+
+  return (
+    <div className={`nb-cell md-cell ${selected ? 'selected' : ''} ${editing ? 'is-editing' : ''}`} data-cell-id={cell.id}>
+      <div className="cell-row">
+        {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+        <div className="cell-prompt" onMouseDown={(e) => { e.preventDefault(); onSelect(); }}>
+          <div className="cell-gutter-actions">
+            {editing && (
+              <button type="button" className="gutter-btn gutter-btn-run" onClick={keys.onRun} title="Render (Shift+Enter)" aria-label="Render markdown">
+                <PlayIcon />
+              </button>
+            )}
+            {canDelete && (
+              <button type="button" className="gutter-btn gutter-btn-delete" onClick={onDelete} disabled={anyRunning} title="Delete cell (d d)" aria-label="Delete cell">
+                <CloseIcon />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="cell-body">
+          {editing ? (
+            <textarea
+              ref={textareaRef}
+              className="markdown-input"
+              value={cell.source}
+              onChange={(e) => { onChange(e.target.value); resize(); }}
+              onFocus={onEditFocus}
+              onKeyDown={(e) => handleEditKeys(e, keys)}
+              placeholder="Write text in **Markdown**. Shift+Enter renders it."
+              rows={3}
+              spellCheck="false"
+            />
+          ) : (
+            <div
+              className="markdown-preview-only"
+              role="button"
+              tabIndex={-1}
+              onClick={onSelect}
+              onDoubleClick={onEdit}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); onEdit(); }
+              }}
+              aria-label="Double-click or press Enter to edit"
+              title="Double-click to edit"
+            >
+              {cell.source.trim() ? (
+                <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
+                  {cell.source}
+                </ReactMarkdown>
+              ) : (
+                <span className="markdown-preview-placeholder">Empty markdown cell. Double-click to edit.</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <InsertRow onInsert={onInsertBelow} disabled={anyRunning} />
+    </div>
+  );
+}
+
+export default function NotebookCells({
+  cells,
+  onCellChange,
+  onPatchCell,
+  onRunCell,
+  onInsertCell,
+  onDeleteCell,
+  onUndoDelete,
+  onCopyCell,
+  onPasteCell,
+  onSetCellType,
+  onInterrupt,
+  onRestartKernel,
+  runningCellId,
+  kernelAvailable,
+  onEditorWillMount,
+  editorTheme = 'data8-light',
+}: NotebookCellsProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const editorsRef = useRef(new Map<string, MonacoEditor.IStandaloneCodeEditor>());
+  const textareasRef = useRef(new Map<string, HTMLTextAreaElement>());
+  const [selectedId, setSelectedId] = useState<string | null>(cells[0]?.id ?? null);
+  /** Cell whose editor should receive focus once it exists (new cell, or Enter on a markdown cell) */
+  const [pendingEdit, setPendingEdit] = useState<string | null>(null);
+  /** Bumped whenever an editor mounts, so a pending focus can be retried once its editor exists */
+  const [mountTick, setMountTick] = useState(0);
+  const chordRef = useRef<{ key: string; at: number } | null>(null);
+  const isNarrowScreen = useIsNarrowScreen();
+  const anyRunning = runningCellId !== null;
+
+  // Keep the selection valid as cells come and go
+  useEffect(() => {
+    if (cells.length === 0) return;
+    if (!selectedId || !cells.some(c => c.id === selectedId)) {
+      setSelectedId(cells[0].id);
+    }
+  }, [cells, selectedId]);
+
+  const indexOf = useCallback((id: string | null) => cells.findIndex(c => c.id === id), [cells]);
+
+  /** Command mode: the notebook container holds focus and single keys act on the selected cell */
+  const enterCommandMode = useCallback((id?: string) => {
+    if (id) setSelectedId(id);
+    containerRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  /** Edit mode: focus the cell's editor (Monaco, or the markdown textarea, un-rendering it first) */
+  const enterEditMode = useCallback((id: string) => {
+    setSelectedId(id);
+    const cell = cells.find(c => c.id === id);
+    if (!cell) return;
+    if (cell.type === 'code') {
+      const editor = editorsRef.current.get(id);
+      if (editor) {
+        editor.focus();
+        return;
+      }
+    } else if (cell.rendered !== false) {
+      onPatchCell(id, { rendered: false });
+    } else {
+      const ta = textareasRef.current.get(id);
+      if (ta) {
+        ta.focus();
+        return;
+      }
+    }
+    setPendingEdit(id);
+  }, [cells, onPatchCell]);
+
+  // Focus an editor that was not mounted yet when edit mode was requested
+  useEffect(() => {
+    if (!pendingEdit) return;
+    const cell = cells.find(c => c.id === pendingEdit);
+    if (!cell) {
+      setPendingEdit(null);
+      return;
+    }
+    const target = cell.type === 'code' ? editorsRef.current.get(pendingEdit) : textareasRef.current.get(pendingEdit);
+    if (!target) return;
+    target.focus();
+    setPendingEdit(null);
+  }, [pendingEdit, cells, mountTick]);
+
+  // Keep the selected cell in view when navigating from the keyboard
+  useEffect(() => {
+    if (!selectedId) return;
+    const el = containerRef.current?.querySelector<HTMLElement>(`[data-cell-id="${selectedId}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedId]);
+
+  const selectRelative = useCallback((delta: number) => {
+    const idx = indexOf(selectedId);
+    const next = cells[Math.max(0, Math.min(cells.length - 1, idx + delta))];
+    if (next) setSelectedId(next.id);
+  }, [cells, selectedId, indexOf]);
+
+  const runCell = useCallback((id: string) => {
+    const cell = cells.find(c => c.id === id);
+    if (!cell) return;
+    if (cell.type === 'markdown') {
+      onPatchCell(id, { rendered: true });
+    } else {
+      onRunCell(id);
+    }
+  }, [cells, onPatchCell, onRunCell]);
+
+  /** Shift+Enter: run, then select the next cell (creating one at the end, like a notebook) */
+  const runAndAdvance = useCallback((id: string) => {
+    runCell(id);
+    const idx = indexOf(id);
+    if (idx === cells.length - 1) {
+      const newId = onInsertCell(idx + 1, 'code');
+      setSelectedId(newId);
+      setPendingEdit(newId);
+    } else {
+      enterCommandMode(cells[idx + 1].id);
+    }
+  }, [runCell, indexOf, cells, onInsertCell, enterCommandMode]);
+
+  /** Alt+Enter: run, then insert a new cell below and edit it */
+  const runAndInsert = useCallback((id: string) => {
+    runCell(id);
+    const newId = onInsertCell(indexOf(id) + 1, 'code');
+    setSelectedId(newId);
+    setPendingEdit(newId);
+  }, [runCell, indexOf, onInsertCell]);
+
+  const insertAt = useCallback((index: number, type: CellType, edit: boolean) => {
+    const newId = onInsertCell(index, type);
+    setSelectedId(newId);
+    if (edit) setPendingEdit(newId);
+    else enterCommandMode(newId);
+  }, [onInsertCell, enterCommandMode]);
+
+  const deleteCell = useCallback((id: string) => {
+    if (cells.length <= 1) return;
+    const idx = indexOf(id);
+    const neighbour = cells[idx + 1] ?? cells[idx - 1];
+    onDeleteCell(id);
+    if (neighbour) enterCommandMode(neighbour.id);
+  }, [cells, indexOf, onDeleteCell, enterCommandMode]);
+
+  const keyActionsFor = useCallback((id: string): EditKeyActions => ({
+    onEscape: () => enterCommandMode(id),
+    onRun: () => { runCell(id); enterCommandMode(id); },
+    onRunAdvance: () => runAndAdvance(id),
+    onRunInsert: () => runAndInsert(id),
+  }), [enterCommandMode, runCell, runAndAdvance, runAndInsert]);
+
+  /** Jupyter command-mode shortcuts; only active while the container itself has focus */
+  const handleCommandKey = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== containerRef.current || !selectedId) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) {
+      if (e.key === 'Enter' && !e.altKey) {
+        runCell(selectedId);
+      } else if (e.key === 'Enter' && e.altKey) {
+        runAndInsert(selectedId);
+      } else {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
+    const idx = indexOf(selectedId);
+    const now = Date.now();
+    const chord = chordRef.current && now - chordRef.current.at < CHORD_MS ? chordRef.current.key : null;
+    chordRef.current = null;
+    let handled = true;
+
+    switch (e.key) {
+      case 'Enter':
+        if (e.shiftKey) runAndAdvance(selectedId);
+        else enterEditMode(selectedId);
+        break;
+      case 'ArrowUp':
+      case 'k':
+        selectRelative(-1);
+        break;
+      case 'ArrowDown':
+      case 'j':
+        selectRelative(1);
+        break;
+      case 'a':
+        insertAt(idx, 'code', false);
+        break;
+      case 'b':
+        insertAt(idx + 1, 'code', false);
+        break;
+      case 'm':
+        onSetCellType(selectedId, 'markdown');
+        break;
+      case 'y':
+        onSetCellType(selectedId, 'code');
+        break;
+      case 'x':
+        onCopyCell(selectedId);
+        deleteCell(selectedId);
+        break;
+      case 'c':
+        onCopyCell(selectedId);
+        break;
+      case 'v': {
+        const newId = onPasteCell(idx + 1);
+        if (newId) enterCommandMode(newId);
+        break;
+      }
+      case 'V': {
+        const newId = onPasteCell(idx);
+        if (newId) enterCommandMode(newId);
+        break;
+      }
+      case 'z': {
+        const restored = onUndoDelete();
+        if (restored) enterCommandMode(restored);
+        break;
+      }
+      case 'd':
+        if (chord === 'd') deleteCell(selectedId);
+        else chordRef.current = { key: 'd', at: now };
+        break;
+      case 'i':
+        if (chord === 'i') onInterrupt();
+        else chordRef.current = { key: 'i', at: now };
+        break;
+      case '0':
+        if (chord === '0') onRestartKernel();
+        else chordRef.current = { key: '0', at: now };
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, [selectedId, indexOf, runCell, runAndInsert, runAndAdvance, enterEditMode, selectRelative, insertAt, onSetCellType, onCopyCell, deleteCell, onPasteCell, enterCommandMode, onUndoDelete, onInterrupt, onRestartKernel]);
+
+  return (
+    // The container is the focus target for command mode; its keys act on the selected cell.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex, jsx-a11y/no-noninteractive-element-interactions
+    <div className="notebook-cells-container" ref={containerRef} tabIndex={0} onKeyDown={handleCommandKey} role="list" aria-label="Notebook cells">
+      {cells.map((cell, index) => {
+        const selected = cell.id === selectedId;
+        const common = {
+          selected,
+          anyRunning,
+          canDelete: cells.length > 1,
+          onChange: (source: string) => onCellChange(cell.id, source),
+          onSelect: () => enterCommandMode(cell.id),
+          onEditFocus: () => setSelectedId(cell.id),
+          keys: keyActionsFor(cell.id),
+          onDelete: () => deleteCell(cell.id),
+          onInsertBelow: (type: CellType) => insertAt(index + 1, type, true),
+        };
+        return cell.type === 'code' ? (
+          <CodeCell
+            key={cell.id}
+            cell={cell}
+            {...common}
+            isRunning={runningCellId === cell.id}
+            kernelAvailable={kernelAvailable}
+            editorTheme={editorTheme}
+            fontSize={isNarrowScreen ? 16 : 14}
+            onEditorWillMount={onEditorWillMount}
+            onRun={() => runCell(cell.id)}
+            onMount={(editor) => {
+              editorsRef.current.set(cell.id, editor);
+              setMountTick(t => t + 1);
+            }}
+          />
+        ) : (
+          <MarkdownCell
+            key={cell.id}
+            cell={cell}
+            {...common}
+            editing={cell.rendered === false}
+            onEdit={() => enterEditMode(cell.id)}
+            onMount={(el) => {
+              if (el) {
+                textareasRef.current.set(cell.id, el);
+                setMountTick(t => t + 1);
+              } else {
+                textareasRef.current.delete(cell.id);
+              }
+            }}
+          />
+        );
+      })}
+
+      <div className="notebook-hint">
+        <span><kbd>Esc</kbd> command mode</span>
+        <span><kbd>Enter</kbd> edit</span>
+        <span><kbd>Shift</kbd><kbd>Enter</kbd> run, next</span>
+        <span><kbd>{MOD_KEY}</kbd><kbd>Enter</kbd> run</span>
+        <span><kbd>a</kbd>/<kbd>b</kbd> cell above/below</span>
+        <span><kbd>d</kbd><kbd>d</kbd> delete</span>
+        <span><kbd>m</kbd>/<kbd>y</kbd> markdown/code</span>
+        <span><kbd>z</kbd> undo delete</span>
+        <span><kbd>0</kbd><kbd>0</kbd> restart kernel</span>
+      </div>
     </div>
   );
 }

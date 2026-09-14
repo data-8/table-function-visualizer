@@ -159,12 +159,176 @@
   50% { opacity: 0.35; }
 }
 
+/* Export dropdown */
+.export-menu {
+  position: relative;
+}
+
+.export-button .caret {
+  margin-left: -0.15rem;
+  color: var(--text-tertiary);
+}
+
+.export-menu-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 16.5rem;
+  white-space: nowrap;
+  padding: 0.3rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px rgba(20, 20, 19, 0.12);
+}
+
+.export-menu-item {
+  width: 100%;
+  justify-content: space-between;
+  gap: 1.25rem;
+  min-height: 32px;
+  padding: 0 0.6rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font-weight: 500;
+  text-align: left;
+}
+
+.export-menu-item:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  border: none;
+}
+
+.export-menu-hint {
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+}
+
+/* Share popover */
+.share-menu {
+  position: relative;
+}
+
+.share-button.is-copied {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.share-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: 22rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.85rem 0.9rem 0.9rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px rgba(20, 20, 19, 0.12);
+  text-align: left;
+}
+
+.share-popover-title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin-bottom: 0.55rem;
+}
+
+.share-url-row {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.share-url {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-panel-muted);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  outline: none;
+}
+
+.share-url:focus {
+  border-color: var(--outline-focus);
+}
+
+.share-copy-again {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+}
+
+.share-popover-body {
+  margin: 0.6rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+/* Notebook toolbar (kernel controls), like JupyterLab's */
+.notebook-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.notebook-header .status {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+}
+
+.status-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notebook-toolbar button {
+  min-height: 30px;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
+  gap: 0.35rem;
+}
+
+.icon-button {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+
+.icon-button .btn-icon {
+  font-size: 0.85em;
+  opacity: 1;
+}
+
+.btn-icon {
+  font-size: 0.7em;
+  letter-spacing: -0.1em;
+  opacity: 0.85;
+}
+
+.toolbar-button {
+  color: var(--text-secondary);
+}
+
 .run-button {
   background: var(--primary-bg);
   color: var(--primary-fg);
   border-color: var(--primary-bg);
   font-weight: 600;
-  min-width: 5.5rem;
 }
 
 .run-button:hover:not(:disabled) {
@@ -267,8 +431,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.75rem;
   min-height: 44px;
-  padding: 0 1.25rem;
+  padding: 0.4rem 1rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -516,30 +681,46 @@
     font-size: 0.75rem;
   }
 
-  /* Run (wide) + Stop fill the primary row so the rest wrap below */
-  .run-button {
-    order: 4;
-    flex: 1 1 60%;
-    min-width: 0;
-    min-height: 2.75rem;
-  }
-
-  .stop-button {
-    order: 5;
-    flex: 1 1 36%;
-    min-width: 0;
-    min-height: 2.75rem;
-  }
-
-  /* Basis 30% means up to three fit here but none can join the Run/Stop row */
   .examples-button,
   .share-button,
-  .export-button {
-    order: 6;
+  .export-menu {
+    order: 4;
     flex: 1 1 30%;
     min-width: 0;
+  }
+
+  .export-menu .export-button,
+  .examples-button,
+  .share-button {
+    width: 100%;
     min-height: 2.75rem;
     padding: 0 0.6rem;
+  }
+
+  .export-menu-list,
+  .share-popover {
+    left: 0;
+    right: auto;
+  }
+
+  .notebook-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.4rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .notebook-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .notebook-toolbar button {
+    flex: 1 1 auto;
+    min-height: 2.5rem;
+  }
+
+  .notebook-header .status {
+    justify-content: flex-start;
   }
 
   .mobile-view-switcher {
@@ -549,6 +730,12 @@
   .main-content.jupyter-style.mobile-view-notebook .trace-panel,
   .main-content.jupyter-style.mobile-view-visualization .notebook-panel {
     display: none;
+  }
+
+  /* A panel coming back from display: none restarts its animation, so tab switches fade */
+  .notebook-panel,
+  .trace-panel {
+    animation: fade-in 180ms ease-out both;
   }
 
   .notebook-panel {

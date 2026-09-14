@@ -1,7 +1,13 @@
+@keyframes gallery-rise {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
 .gallery-overlay {
   position: fixed;
   inset: 0;
   background: rgba(20, 20, 19, 0.45);
+  animation: fade-in 160ms ease-out both;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -10,7 +16,18 @@
   overflow-y: auto;
 }
 
+/* Closing: the overlay fades out while the modal settles back down */
+.gallery-overlay.is-closing {
+  animation: fade-out 140ms ease-in both;
+  pointer-events: none;
+}
+
+.gallery-overlay.is-closing .gallery-modal {
+  animation: gallery-rise 140ms ease-in reverse both;
+}
+
 .gallery-modal {
+  animation: gallery-rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   background: var(--bg-panel);
   border-radius: var(--radius-panel);
   border: 1px solid var(--border-subtle);

@@ -6,6 +6,11 @@
   margin: 0 auto;
 }
 
+.step-frame {
+  display: flex;
+  flex-direction: column;
+}
+
 /* Nested StepCard inside the slideshow shares the same column */
 .step-slideshow .step-card {
   gap: 1rem;

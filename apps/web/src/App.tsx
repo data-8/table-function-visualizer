@@ -1,26 +1,57 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { zipSync } from 'fflate';
 import './App.css';
 import TracePanel from './components/TracePanel';
-import NotebookCells from './components/NotebookCells';
+import NotebookCells, { type NotebookCell, type CellType } from './components/NotebookCells';
 import { StepCard } from './components/StepSlideshow';
 import ExamplesGallery from './components/ExamplesGallery';
-import { initPyodide, runPythonCode, stopExecutionHard, type PyodideOutput } from './lib/pyodide';
+import { initPyodide, runPythonCode, stopExecutionHard, restartKernelSoft, type PyodideOutput, type TraceRecord } from './lib/pyodide';
+import { ipynbToJson } from './lib/ipynb';
+import { registerPythonCompletions, setUserNamesProvider, extractUserNames } from './lib/completions';
 import { flattenTrace } from './lib/frames';
 import { type Example } from './lib/examples';
-import type { editor as MonacoEditor } from 'monaco-editor';
 
 const DEFAULT_MARKDOWN = `## How to use this notebook
 
-- **Markdown cell (this cell):** Double-tap or double-click to edit. Use **Shift+Enter** or the **Render** button to see the rendered version and (with Shift+Enter) move to the code cell.
-- **Code cell:** Write Python using the \`datascience\` library. Press **Run** or **Ctrl+Enter** (**Cmd+Enter** on Mac) to execute. The right panel shows step-by-step table operations.
-- **Visualization:** After running, use the arrows to step through operations and **Export** to save as PDF or **Share** to copy a link.`;
+- **Cells:** Click a cell's margin to select it, press **Enter** to edit and **Esc** to get back. In this mode single keys act on the selected cell, like Jupyter: **a**/**b** add a cell above/below, **d d** deletes, **m**/**y** switch it to markdown/code, **z** undoes a delete.
+- **Running:** **Ctrl+Enter** (**Cmd+Enter** on Mac) runs a cell; **Shift+Enter** runs it and moves on. A table named on the last line of a cell is shown beneath it. **Run all** runs every cell top to bottom; **Restart** forgets everything the cells defined.
+- **Visualize:** **Run all & visualize** runs everything and shows each Table operation step by step on the right. **Visualize** on its own shows the operations from whichever cells you have run so far. Use the arrows to step through, **Export** to save a PDF, or **Share** to copy a permanent link.`;
 
-const DEFAULT_CODE = `from datascience import *
-# See markdown above for instructions
-students = Table().with_columns('Name', make_array('Alice', 'Bob'))
-`;
+const DEFAULT_CELLS: Array<{ type: CellType; source: string }> = [
+  { type: 'markdown', source: DEFAULT_MARKDOWN },
+  { type: 'code', source: `from datascience import *` },
+  { type: 'code', source: `students = Table().with_columns('Name', make_array('Alice', 'Bob'))
+students` },
+];
+
+let cellIdCounter = 0;
+function newCell(source: string, type: CellType = 'code'): NotebookCell {
+  cellIdCounter += 1;
+  return { id: `cell-${Date.now().toString(36)}-${cellIdCounter}`, type, source, rendered: type === 'markdown' ? true : undefined };
+}
+
+/** Cells as stored in share links and localStorage */
+interface StoredCell {
+  type: CellType;
+  source: string;
+}
+
+function parseStoredCells(value: unknown): NotebookCell[] | null {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  // Older saves were arrays of code strings
+  if (value.every(x => typeof x === 'string')) return (value as string[]).map(src => newCell(src));
+  if (value.every(x => x && typeof x === 'object' && typeof (x as StoredCell).source === 'string')) {
+    return (value as StoredCell[]).map(c => newCell(c.source, c.type === 'markdown' ? 'markdown' : 'code'));
+  }
+  return null;
+}
+
+/** An example as a notebook: its note first, then one code cell per step */
+function exampleCells(example: Example): NotebookCell[] {
+  return [newCell(example.markdown, 'markdown'), ...example.cells.map(src => newCell(src))];
+}
 
 const THEME_STORAGE_KEY = 'theme';
 
@@ -45,9 +76,23 @@ const NOTEBOOK_WIDTH_STORAGE_KEY = 'notebookWidthPercent';
 const NOTEBOOK_STORAGE_KEY = 'notebook';
 
 function App() {
-  const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
-  const [code, setCode] = useState(DEFAULT_CODE);
+  const [cells, setCells] = useState<NotebookCell[]>(() => DEFAULT_CELLS.map(c => newCell(c.source, c.type)));
+  const [runningCellId, setRunningCellId] = useState<string | null>(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [sharePopover, setSharePopover] = useState<{ url: string; copied: boolean } | null>(null);
+  /** Bumped whenever the whole notebook is replaced (example, reset, shared link) so the cells fade in */
+  const [notebookVersion, setNotebookVersion] = useState(0);
+  /** Bumped whenever a new visualization is shown so the panel fades in */
+  const [visualizationVersion, setVisualizationVersion] = useState(0);
+  const shareUrlInputRef = useRef<HTMLInputElement>(null);
+  const execCounterRef = useRef(0);
+  /** Deleted cells, most recent last, for z (undo delete) */
+  const deletedCellsRef = useRef<Array<{ cell: NotebookCell; index: number }>>([]);
+  /** Cell copied with c / x, for v */
+  const clipboardRef = useRef<NotebookCell | null>(null);
   const [output, setOutput] = useState<PyodideOutput>({ stdout: '', stderr: '' });
+  /** Every run is traced quietly; this is the trace of everything run since the last restart or Run all */
+  const sessionTraceRef = useRef<TraceRecord[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [pyodideStatus, setPyodideStatus] = useState<PyodideStatus>('loading');
   const [statusMessage, setStatusMessage] = useState('Initializing Pyodide...');
@@ -63,11 +108,10 @@ function App() {
     return Number.isFinite(n) && n >= 20 && n <= 80 ? n : 45;
   });
   const mainContentRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const slideshowRef = useRef<HTMLDivElement>(null);
   const exportContainerRef = useRef<HTMLDivElement>(null);
   const runTokenRef = useRef(0);
-  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Sync theme to DOM and localStorage
   useEffect(() => {
@@ -121,7 +165,15 @@ function App() {
     window.scrollTo({ top: 0 });
   }, []);
 
+  // Completions see the names defined anywhere in the notebook
+  const cellsRef = useRef(cells);
+  cellsRef.current = cells;
+  useEffect(() => {
+    setUserNamesProvider(() => extractUserNames(cellsRef.current.filter(c => c.type === 'code').map(c => c.source)));
+  }, []);
+
   const handleEditorWillMount = (monaco: typeof import('monaco-editor')) => {
+    registerPythonCompletions(monaco);
     monaco.editor.defineTheme('data8-dark', {
       base: 'vs-dark',
       inherit: true,
@@ -180,31 +232,40 @@ function App() {
   // itself stays clean; the link is only built when the user clicks Share.
   const buildShareUrl = useCallback(() => {
     const params = new URLSearchParams();
-    params.set('code', encodeURIComponent(code));
-    if (markdown.trim() && markdown !== DEFAULT_MARKDOWN) {
-      params.set('md', encodeURIComponent(markdown));
-    }
+    const stored: StoredCell[] = cells.map(c => ({ type: c.type, source: c.source }));
+    params.set('cells', encodeURIComponent(JSON.stringify(stored)));
     if (currentExample) {
       params.set('example', currentExample);
     }
     return `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-  }, [code, markdown, currentExample]);
+  }, [cells, currentExample]);
 
   // On mount: a shared link wins; otherwise restore the last session from localStorage.
   // Query params are consumed and removed so the URL stays clean while editing.
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
-      const codeParam = params.get('code');
-      if (codeParam) {
-        setCode(decodeURIComponent(codeParam));
+      const cellsParam = params.get('cells');
+      const codeParam = params.get('code'); // older single-cell links
+      if (cellsParam || codeParam) {
+        let loaded: NotebookCell[] | null = null;
+        if (cellsParam) {
+          loaded = parseStoredCells(JSON.parse(decodeURIComponent(cellsParam)));
+        } else if (codeParam) {
+          loaded = [newCell(decodeURIComponent(codeParam))];
+        }
+        // Older links carried the markdown note separately
         const mdParam = params.get('md');
-        if (mdParam) {
+        if (loaded && mdParam && !loaded.some(c => c.type === 'markdown')) {
           try {
-            setMarkdown(decodeURIComponent(mdParam));
+            loaded = [newCell(decodeURIComponent(mdParam), 'markdown'), ...loaded];
           } catch {
             /* ignore */
           }
+        }
+        if (loaded) {
+          setCells(loaded);
+          setNotebookVersion(v => v + 1);
         }
         const exampleId = params.get('example');
         if (exampleId) {
@@ -215,9 +276,12 @@ function App() {
       }
       const saved = localStorage.getItem(NOTEBOOK_STORAGE_KEY);
       if (saved) {
-        const parsed = JSON.parse(saved) as { code?: string; markdown?: string; example?: string };
-        if (typeof parsed.code === 'string') setCode(parsed.code);
-        if (typeof parsed.markdown === 'string') setMarkdown(parsed.markdown);
+        const parsed = JSON.parse(saved) as { cells?: unknown; markdown?: string; example?: string };
+        let loaded = parseStoredCells(parsed.cells);
+        if (loaded && typeof parsed.markdown === 'string' && !loaded.some(c => c.type === 'markdown')) {
+          loaded = [newCell(parsed.markdown, 'markdown'), ...loaded];
+        }
+        if (loaded) setCells(loaded);
         if (typeof parsed.example === 'string') setCurrentExample(parsed.example);
       }
     } catch (e) {
@@ -231,26 +295,32 @@ function App() {
       try {
         localStorage.setItem(
           NOTEBOOK_STORAGE_KEY,
-          JSON.stringify({ code, markdown, example: currentExample })
+          JSON.stringify({ cells: cells.map(c => ({ type: c.type, source: c.source })), example: currentExample })
         );
       } catch {
         /* ignore */
       }
     }, 500);
     return () => clearTimeout(timeoutId);
-  }, [code, markdown, currentExample]);
+  }, [cells, currentExample]);
 
-  // Initialize Pyodide on mount
+  // Initialize Pyodide on mount. The notebook is fully usable meanwhile: editing, examples and
+  // sharing work, and a run requested before the kernel is ready is queued and starts on its own.
   useEffect(() => {
     const init = async () => {
       try {
-        setStatusMessage('Loading Pyodide...');
+        setStatusMessage('Loading Python (about 10 s)...');
         await initPyodide();
-        setStatusMessage('Installing datascience library...');
-        // Give it a moment to finish installation
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        pyodideStatusRef.current = 'ready';
         setPyodideStatus('ready');
-        setStatusMessage('Ready to run Python code!');
+        const pending = pendingRunRef.current;
+        pendingRunRef.current = null;
+        if (pending) {
+          if (pending.kind === 'cell') void runCellRef.current(pending.id);
+          else void runAllRef.current(pending.visualize);
+        } else {
+          setStatusMessage('Ready to run Python code!');
+        }
       } catch (error) {
         setPyodideStatus('error');
         setStatusMessage(error instanceof Error ? error.message : 'Failed to load Pyodide');
@@ -261,170 +331,478 @@ function App() {
     init();
   }, []);
 
+  const closeShareOnEscape = (e: React.KeyboardEvent) => {
+    if (e.key !== 'Escape') return;
+    setSharePopover(null);
+    (e.currentTarget.closest('.share-menu')?.querySelector('.share-button') as HTMLElement | null)?.focus();
+  };
+
+  /** Copy the share link and open a popover that confirms it and says what the link contains */
   const handleShare = async () => {
+    const url = buildShareUrl();
+    let copied = false;
     try {
-      await navigator.clipboard.writeText(buildShareUrl());
-      // Show temporary feedback
-      const originalText = statusMessage;
-      setStatusMessage('Link copied to clipboard!');
-      setTimeout(() => setStatusMessage(originalText), 2000);
+      await navigator.clipboard.writeText(url);
+      copied = true;
     } catch (e) {
       console.error('Failed to copy link:', e);
-      setStatusMessage('Failed to copy link');
-      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+    }
+    setSharePopover({ url, copied });
+    if (!copied) {
+      // Clipboard blocked (e.g. insecure context): let the user copy from the field
+      requestAnimationFrame(() => shareUrlInputRef.current?.select());
     }
   };
 
-  const handleExport = () => {
+  /** File-safe name for downloads, from the current example's title */
+  const downloadBaseName = () =>
+    (currentExample || 'table-tutor').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'notebook';
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  /**
+   * Rasterise every step card in the off-screen export container (mounted while
+   * `isExporting` is true) at 2x, in frame order. Shared by the PDF and image exports.
+   */
+  const renderStepCanvases = async (): Promise<HTMLCanvasElement[]> => {
+    const container = exportContainerRef.current;
+    if (!container) return [];
+    const cards = Array.from(container.querySelectorAll<HTMLElement>('.step-card'));
+    // Solid background so the images read on any slide, matching the current theme
+    const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue('--bg-panel').trim() || '#ffffff';
+    const canvases: HTMLCanvasElement[] = [];
+    for (const card of cards) {
+      canvases.push(await html2canvas(card, { backgroundColor, scale: 2, useCORS: true, logging: false }));
+    }
+    return canvases;
+  };
+
+  const exportSteps = (kind: 'pdf' | 'images') => {
     if (!output.trace?.length) {
       setStatusMessage('Nothing to export');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
       return;
     }
-    setStatusMessage('Generating PDF...');
-    setIsExportingPdf(true);
+    setStatusMessage(kind === 'pdf' ? 'Generating PDF...' : 'Rendering step images...');
+    setIsExporting(true);
+    // Let React mount the export container before rasterising
     setTimeout(async () => {
       try {
-        const container = exportContainerRef.current;
-        if (!container) {
+        const canvases = await renderStepCanvases();
+        if (canvases.length === 0) {
           setStatusMessage('Failed to export');
           return;
         }
-        const cards = container.querySelectorAll('.step-card');
-        if (cards.length === 0) {
-          setStatusMessage('Failed to export');
-          return;
-        }
-        let pdf: jsPDF | null = null;
-        for (let i = 0; i < cards.length; i++) {
-          const canvas = await html2canvas(cards[i] as HTMLElement, {
-            backgroundColor: null,
-            scale: 2,
-            useCORS: true,
-            logging: false,
+        if (kind === 'pdf') {
+          let pdf: jsPDF | null = null;
+          canvases.forEach((canvas, i) => {
+            const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+            if (i === 0) {
+              pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
+            } else {
+              pdf!.addPage(undefined, orientation);
+            }
+            const pageW = pdf!.internal.pageSize.getWidth();
+            const pageH = pdf!.internal.pageSize.getHeight();
+            const scale = Math.min(pageW / canvas.width, pageH / canvas.height) * 0.95;
+            const w = canvas.width * scale;
+            const h = canvas.height * scale;
+            pdf!.addImage(canvas.toDataURL('image/png'), 'PNG', (pageW - w) / 2, (pageH - h) / 2, w, h);
           });
-          const imgData = canvas.toDataURL('image/png');
-          const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
-          if (i === 0) {
-            pdf = new jsPDF({ orientation, unit: 'mm', format: 'a4' });
-          } else {
-            pdf!.addPage(undefined, orientation);
+          pdf!.save(`${downloadBaseName()}-steps.pdf`);
+          setStatusMessage('PDF downloaded');
+        } else {
+          // One PNG per step, named to sort in order and read on their own:
+          // 01-with_columns.png, 02-where-part-1-of-3.png, ...
+          const frames = flattenTrace(output.trace!);
+          const files: Record<string, Uint8Array> = {};
+          for (let i = 0; i < canvases.length; i++) {
+            const frame = frames[i];
+            const part = frame?.subTotal && frame.subTotal > 1 ? `-part-${(frame.subIndex ?? 0) + 1}-of-${frame.subTotal}` : '';
+            const name = `${String(i + 1).padStart(2, '0')}-${frame?.record.operation ?? 'step'}${part}.png`;
+            const blob = await new Promise<Blob | null>(resolve => canvases[i].toBlob(resolve, 'image/png'));
+            if (blob) files[name] = new Uint8Array(await blob.arrayBuffer());
           }
-          const pageW = pdf!.internal.pageSize.getWidth();
-          const pageH = pdf!.internal.pageSize.getHeight();
-          const scale = Math.min(pageW / canvas.width, pageH / canvas.height) * 0.95;
-          const w = canvas.width * scale;
-          const h = canvas.height * scale;
-          const x = (pageW - w) / 2;
-          const y = (pageH - h) / 2;
-          pdf!.addImage(imgData, 'PNG', x, y, w, h);
-        }
-        if (pdf) {
-          pdf.save(`table-tutor-export-${Date.now()}.pdf`);
-          setStatusMessage('Export downloaded!');
+          // PNG is already compressed, so store the entries rather than deflating them again
+          const zipped = zipSync(files, { level: 0 });
+          triggerDownload(new Blob([zipped], { type: 'application/zip' }), `${downloadBaseName()}-steps.zip`);
+          setStatusMessage(`${canvases.length} step image${canvases.length !== 1 ? 's' : ''} downloaded`);
         }
       } catch (e) {
         console.error('Failed to export:', e);
         setStatusMessage('Failed to export');
       } finally {
-        setIsExportingPdf(false);
-        setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+        setIsExporting(false);
+        setTimeout(() => setStatusMessage('Ready to run Python code!'), 2500);
       }
     }, 200);
   };
 
-  const handleRun = useCallback(async () => {
-    if (pyodideStatus !== 'ready') {
-      setStatusMessage('Pyodide not ready yet. Please wait...');
-      return;
-    }
+  const setCellOutput = useCallback((id: string, output: PyodideOutput | undefined, execCount?: number) => {
+    setCells(prev => prev.map(c => (c.id === id ? { ...c, output, execCount: execCount ?? c.execCount } : c)));
+  }, []);
 
-    if (!code.trim()) {
-      setStatusMessage('Please enter some code to run');
-      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
-      return;
-    }
+  /** Run one cell in the shared kernel. Returns the result, or null if the run was superseded. */
+  const executeCell = useCallback(async (cell: NotebookCell, token: number, trace: { enabled: boolean; reset: boolean }) => {
+    setRunningCellId(cell.id);
+    const result = await runPythonCode(cell.source, { enableTracing: trace.enabled, resetTrace: trace.reset });
+    if (token !== runTokenRef.current) return null;
+    execCounterRef.current += 1;
+    setCellOutput(cell.id, result, execCounterRef.current);
+    return result;
+  }, [setCellOutput]);
 
-    const token = ++runTokenRef.current;
-    setIsRunning(true);
-    setStatusMessage('Running code...');
-
-    try {
-      const result = await runPythonCode(code);
-      if (token !== runTokenRef.current) return;
-      setOutput(result);
-      if (result.error) {
-        switchMobileView('notebook');
-        setStatusMessage('Execution error, see output under the code cell');
-      } else if (result.trace && result.trace.length > 0) {
-        switchMobileView('visualization');
-        setStatusMessage(`Executed successfully (${result.trace.length} operation${result.trace.length !== 1 ? 's' : ''} traced)`);
-      } else {
-        setStatusMessage('Code executed (no Table operations detected)');
-      }
+  /** Show the operations traced so far in the visualization panel */
+  const showSessionTrace = useCallback(() => {
+    const trace = sessionTraceRef.current;
+    if (trace.length === 0) {
+      setStatusMessage('Nothing to visualize yet: run some cells first');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+      return;
+    }
+    setOutput({ stdout: '', stderr: '', trace });
+    setVisualizationVersion(v => v + 1);
+    switchMobileView('visualization');
+    setStatusMessage(`Visualized ${trace.length} operation${trace.length !== 1 ? 's' : ''}`);
+    setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+  }, [switchMobileView]);
+
+  /** Wrap up a run: remember its (cumulative) trace, and show it only if asked */
+  const finishRun = useCallback((result: PyodideOutput | null, visualize: boolean, label: string) => {
+    if (!result) return;
+    if (result.trace) sessionTraceRef.current = result.trace;
+    if (result.error) {
+      switchMobileView('notebook');
+      setStatusMessage('Execution error, see the output under the cell');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    } else if (visualize) {
+      showSessionTrace();
+    } else {
+      setStatusMessage(label);
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    }
+  }, [switchMobileView, showSessionTrace]);
+
+  // Refs mirror the kernel state so a run started right after a restart (before React
+  // re-renders the callbacks) sees the current values rather than a stale closure.
+  const pyodideStatusRef = useRef<PyodideStatus>('loading');
+  pyodideStatusRef.current = pyodideStatus;
+  const isRunningRef = useRef(false);
+  isRunningRef.current = isRunning;
+
+  /** A run requested while Python is still loading; the latest request wins */
+  type PendingRun = { kind: 'cell'; id: string } | { kind: 'all'; visualize: boolean };
+  const pendingRunRef = useRef<PendingRun | null>(null);
+
+  /** Queue a run if the kernel is still loading. Returns true when the caller should stop. */
+  const deferIfLoading = useCallback((pending: PendingRun) => {
+    if (pyodideStatusRef.current !== 'loading') return false;
+    pendingRunRef.current = pending;
+    setStatusMessage('Python is still loading; this will run as soon as it is ready');
+    return true;
+  }, []);
+
+  const beginRun = useCallback(() => {
+    if (pyodideStatusRef.current !== 'ready') {
+      setStatusMessage('Python is not available. Try reloading the page.');
+      return null;
+    }
+    if (isRunningRef.current) return null;
+    const token = ++runTokenRef.current;
+    isRunningRef.current = true;
+    setIsRunning(true);
+    setStatusMessage('Running...');
+    return token;
+  }, []);
+
+  const endRun = useCallback((token: number) => {
+    if (token === runTokenRef.current) {
+      isRunningRef.current = false;
+      setIsRunning(false);
+      setRunningCellId(null);
+    }
+  }, []);
+
+  /** Run a single cell, like Ctrl+Enter in a notebook */
+  const handleRunCell = useCallback(async (id: string) => {
+    const cell = cells.find(c => c.id === id);
+    if (!cell) return;
+    if (!cell.source.trim()) {
+      setCellOutput(id, undefined);
+      return;
+    }
+    if (deferIfLoading({ kind: 'cell', id })) return;
+    const token = beginRun();
+    if (token === null) return;
+    try {
+      finishRun(await executeCell(cell, token, { enabled: true, reset: false }), false, 'Ran cell');
     } catch (error) {
       if (token !== runTokenRef.current) return;
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setOutput({ stdout: '', stderr: '', error: errorMessage });
+      const message = error instanceof Error ? error.message : String(error);
+      setCellOutput(id, { stdout: '', stderr: '', error: message });
       switchMobileView('notebook');
-      setStatusMessage('Execution failed, see output under the code cell');
+      setStatusMessage('Execution failed, see the output under the cell');
       setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
     } finally {
-      if (token === runTokenRef.current) setIsRunning(false);
+      endRun(token);
     }
-  }, [code, pyodideStatus, switchMobileView]);
+  }, [cells, deferIfLoading, beginRun, executeCell, finishRun, endRun, setCellOutput, switchMobileView]);
 
+  /**
+   * Run every cell top to bottom, stopping at the first error like a notebook's Run All.
+   * With `visualize`, Table operations are traced and the visualization panel shows them.
+   */
+  const runAll = useCallback(async (visualize: boolean) => {
+    if (deferIfLoading({ kind: 'all', visualize })) return;
+    const token = beginRun();
+    if (token === null) return;
+    sessionTraceRef.current = [];
+    try {
+      let last: PyodideOutput | null = null;
+      let first = true;
+      for (const cell of cells) {
+        if (cell.type === 'markdown') {
+          setCells(prev => prev.map(c => (c.id === cell.id ? { ...c, rendered: true } : c)));
+          continue;
+        }
+        if (!cell.source.trim()) {
+          setCellOutput(cell.id, undefined);
+          continue;
+        }
+        const result = await executeCell(cell, token, { enabled: true, reset: first });
+        first = false;
+        if (!result) return;
+        last = result;
+        if (result.error) break;
+      }
+      if (last === null) sessionTraceRef.current = [];
+      finishRun(last, visualize, 'Ran all cells');
+    } catch (error) {
+      if (token !== runTokenRef.current) return;
+      const message = error instanceof Error ? error.message : String(error);
+      setOutput({ stdout: '', stderr: '', error: message });
+      switchMobileView('notebook');
+      setStatusMessage('Execution failed, see the output under the cell');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 3000);
+    } finally {
+      endRun(token);
+    }
+  }, [cells, deferIfLoading, beginRun, executeCell, finishRun, endRun, setCellOutput, switchMobileView]);
+
+  const handleRunAll = useCallback(() => runAll(false), [runAll]);
+  const handleRunAllAndVisualize = useCallback(() => runAll(true), [runAll]);
+  const handleVisualize = showSessionTrace;
+
+  const handleInsertCell = useCallback((index: number, type: CellType) => {
+    const cell = newCell('', type);
+    if (type === 'markdown') cell.rendered = false;
+    setCells(prev => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(prev.length, index)), 0, cell);
+      return next;
+    });
+    return cell.id;
+  }, []);
+
+  const handleDeleteCell = useCallback((id: string) => {
+    setCells(prev => {
+      if (prev.length <= 1) return prev;
+      const index = prev.findIndex(c => c.id === id);
+      if (index === -1) return prev;
+      deletedCellsRef.current.push({ cell: prev[index], index });
+      return prev.filter(c => c.id !== id);
+    });
+  }, []);
+
+  const handleUndoDelete = useCallback(() => {
+    const entry = deletedCellsRef.current.pop();
+    if (!entry) return null;
+    const restored = { ...entry.cell, id: newCell('').id };
+    setCells(prev => {
+      const next = [...prev];
+      next.splice(Math.min(entry.index, prev.length), 0, restored);
+      return next;
+    });
+    return restored.id;
+  }, []);
+
+  const handleCopyCell = useCallback((id: string) => {
+    const cell = cells.find(c => c.id === id);
+    if (cell) clipboardRef.current = cell;
+  }, [cells]);
+
+  const handlePasteCell = useCallback((index: number) => {
+    const copied = clipboardRef.current;
+    if (!copied) return null;
+    const pasted: NotebookCell = { ...copied, id: newCell('').id, output: undefined, execCount: undefined };
+    setCells(prev => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(prev.length, index)), 0, pasted);
+      return next;
+    });
+    return pasted.id;
+  }, []);
+
+  const handleSetCellType = useCallback((id: string, type: CellType) => {
+    setCells(prev => prev.map(c => {
+      if (c.id !== id || c.type === type) return c;
+      return type === 'markdown'
+        ? { id: c.id, type, source: c.source, rendered: false }
+        : { id: c.id, type, source: c.source };
+    }));
+  }, []);
+
+  const handleCellChange = useCallback((id: string, source: string) => {
+    setCells(prev => prev.map(c => (c.id === id ? { ...c, source } : c)));
+  }, []);
+
+  const handlePatchCell = useCallback((id: string, patch: Partial<NotebookCell>) => {
+    setCells(prev => prev.map(c => (c.id === id ? { ...c, ...patch } : c)));
+  }, []);
+
+  const runAllRef = useRef(runAll);
+  runAllRef.current = runAll;
+  const runCellRef = useRef(handleRunCell);
+  runCellRef.current = handleRunCell;
+
+  // Ctrl/Cmd+Enter outside an editor runs the whole notebook (inside one, Monaco runs that cell)
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-        event.preventDefault();
-        handleRun();
-      }
+      if (!(event.metaKey || event.ctrlKey) || event.key !== 'Enter') return;
+      if ((event.target as HTMLElement | null)?.closest('.monaco-editor')) return;
+      event.preventDefault();
+      handleRunAll();
     };
-
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
-  }, [handleRun]);
+  }, [handleRunAll]);
 
+  /** Forget what has run: clear every cell's output and In [n] label and start counting over */
+  const clearRunState = useCallback(() => {
+    execCounterRef.current = 0;
+    sessionTraceRef.current = [];
+    setOutput({ stdout: '', stderr: '' });
+    setCells(prev => prev.map(c => (c.type === 'code' ? { ...c, output: undefined, execCount: undefined } : c)));
+  }, []);
+
+  /**
+   * Restart the kernel: names defined by cells are forgotten and outputs are cleared, but the
+   * interpreter and packages stay loaded, so it is instant. Falls back to a full reload if the
+   * interpreter itself is not usable.
+   */
+  const restartKernel = useCallback(async (message: string) => {
+    runTokenRef.current = 0;
+    isRunningRef.current = false;
+    setIsRunning(false);
+    setRunningCellId(null);
+    clearRunState();
+    setStatusMessage(message);
+    try {
+      if (pyodideStatusRef.current === 'ready') {
+        await restartKernelSoft();
+      } else {
+        stopExecutionHard();
+        pyodideStatusRef.current = 'loading';
+        setPyodideStatus('loading');
+        await initPyodide();
+        pyodideStatusRef.current = 'ready';
+        setPyodideStatus('ready');
+      }
+      setStatusMessage('Kernel restarted');
+      setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+      return true;
+    } catch {
+      pyodideStatusRef.current = 'error';
+      setPyodideStatus('error');
+      setStatusMessage('Failed to restart the kernel');
+      return false;
+    }
+  }, [clearRunState]);
+
+  /**
+   * Interrupt (i i): Pyodide runs on the main thread, so a running cell can only be stopped by
+   * throwing the interpreter away and loading a fresh one. Outputs are cleared like a restart.
+   */
   const handleStop = useCallback(() => {
     if (!isRunning) return;
     runTokenRef.current = 0;
-    setStatusMessage('Stopping...');
-    stopExecutionHard();
+    isRunningRef.current = false;
     setIsRunning(false);
-    setOutput({ stdout: '', stderr: '' });
-    setStatusMessage('Stopped. Reinitializing...');
+    setRunningCellId(null);
+    clearRunState();
+    stopExecutionHard();
+    pyodideStatusRef.current = 'loading';
+    setPyodideStatus('loading');
+    setStatusMessage('Interrupted. Reloading Python...');
     (async () => {
       try {
         await initPyodide();
+        pyodideStatusRef.current = 'ready';
         setPyodideStatus('ready');
         setStatusMessage('Ready to run Python code!');
-      } catch (e) {
+      } catch {
+        pyodideStatusRef.current = 'error';
         setPyodideStatus('error');
-        setStatusMessage('Failed to reinitialize after stop');
+        setStatusMessage('Failed to reload after interrupt');
       }
     })();
-  }, [isRunning]);
+  }, [isRunning, clearRunState]);
 
-  // Back to the starter notebook (what you see on first visit)
-  const handleResetNotebook = () => {
-    setCode(DEFAULT_CODE);
-    setMarkdown(DEFAULT_MARKDOWN);
-    setCurrentExample('');
+  const handleRestartKernel = useCallback(() => {
+    void restartKernel('Restarting the kernel...');
+  }, [restartKernel]);
+
+  const handleRestartAndRunAll = useCallback(async () => {
+    if (await restartKernel('Restarting the kernel...')) {
+      void runAllRef.current(false);
+    }
+  }, [restartKernel]);
+
+  /** Download the notebook as an .ipynb (nbformat 4.5) with outputs included */
+  const handleExportIpynb = () => {
+    triggerDownload(new Blob([ipynbToJson(cells)], { type: 'application/x-ipynb+json' }), `${downloadBaseName()}.ipynb`);
+    setStatusMessage('Notebook downloaded');
+    setTimeout(() => setStatusMessage('Ready to run Python code!'), 2000);
+  };
+
+  /**
+   * Replace the whole notebook, like opening a new one in Jupyter: a fresh kernel (names from
+   * the previous notebook are gone), counting starts at In [1], and the visualization is cleared.
+   */
+  const openNotebook = useCallback((nextCells: NotebookCell[], exampleTitle: string) => {
+    runTokenRef.current = 0;
+    isRunningRef.current = false;
+    setIsRunning(false);
+    setRunningCellId(null);
+    pendingRunRef.current = null;
+    setCells(nextCells);
+    setNotebookVersion(v => v + 1);
+    setCurrentExample(exampleTitle);
+    execCounterRef.current = 0;
+    sessionTraceRef.current = [];
     setOutput({ stdout: '', stderr: '' });
     switchMobileView('notebook');
-  };
+    // A kernel that is still loading is already clean; otherwise forget the previous notebook's names
+    if (pyodideStatusRef.current === 'ready') {
+      restartKernelSoft().catch(e => console.error('Failed to reset the kernel:', e));
+    }
+  }, [switchMobileView]);
 
-  const handleSelectExample = (example: Example) => {
-    console.log('Loading example:', example.title);
-    console.log('Example code:', example.code);
-    setCode(example.code);
-    setMarkdown(example.markdown);
-    setCurrentExample(example.title);
-    setOutput({ stdout: '', stderr: '' }); // Clear previous output
-    switchMobileView('notebook');
-  };
+  // Back to the starter notebook (what you see on first visit)
+  const handleResetNotebook = () => openNotebook(DEFAULT_CELLS.map(c => newCell(c.source, c.type)), '');
+
+  const handleSelectExample = (example: Example) => openNotebook(exampleCells(example), example.title);
+
+  const stepCount = output.trace?.length ? flattenTrace(output.trace).length : 0;
 
   return (
     <div className="app">
@@ -455,46 +833,99 @@ function App() {
               </button>
             ))}
           </div>
-          {output.trace && output.trace.length > 0 && (
+          <div className="export-menu" onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setShowExportMenu(false); }}>
             <button
               className="export-button"
-              onClick={handleExport}
-              disabled={pyodideStatus === 'loading'}
-              title="Export visualization as PDF"
+              onClick={() => setShowExportMenu(v => !v)}
+              aria-haspopup="menu"
+              aria-expanded={showExportMenu}
+              title="Export"
             >
               Export
+              <svg className="caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
             </button>
-          )}
-          <button
-            className="share-button"
-            onClick={handleShare}
-            disabled={pyodideStatus === 'loading'}
-            title="Copy shareable link"
+            {showExportMenu && (
+              <div className="export-menu-list rise-in" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="export-menu-item"
+                  onClick={() => { setShowExportMenu(false); exportSteps('pdf'); }}
+                  disabled={!stepCount}
+                  title={stepCount ? 'Save the step-by-step visualization as a PDF, one page per step' : 'Use Visualize first'}
+                >
+                  <span>Steps as PDF</span>
+                  <span className="export-menu-hint">{stepCount ? `${stepCount} page${stepCount !== 1 ? 's' : ''}` : 'visualize first'}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="export-menu-item"
+                  onClick={() => { setShowExportMenu(false); exportSteps('images'); }}
+                  disabled={!stepCount}
+                  title={stepCount ? 'One PNG per step in a zip, ready to drop into slides' : 'Use Visualize first'}
+                >
+                  <span>Steps as PNGs (zip)</span>
+                  <span className="export-menu-hint">{stepCount ? `${stepCount} PNG${stepCount !== 1 ? 's' : ''}` : 'visualize first'}</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="export-menu-item"
+                  onClick={() => { setShowExportMenu(false); handleExportIpynb(); }}
+                  title="Download the notebook with its outputs; opens in Jupyter"
+                >
+                  <span>Notebook (.ipynb)</span>
+                  <span className="export-menu-hint">{cells.length} cell{cells.length !== 1 ? 's' : ''}</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <div
+            className="share-menu"
+            onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSharePopover(null); }}
           >
-            Share
-          </button>
+            <button
+              className={`share-button ${sharePopover?.copied ? 'is-copied' : ''}`}
+              onClick={handleShare}
+              aria-haspopup="dialog"
+              aria-expanded={sharePopover !== null}
+              onKeyDown={closeShareOnEscape}
+              title="Copy a link to this notebook"
+            >
+              {sharePopover?.copied ? 'Copied' : 'Share'}
+            </button>
+            {sharePopover && (
+              <div className="share-popover rise-in" role="dialog" aria-label="Share link">
+                <div className="share-popover-title">
+                  {sharePopover.copied ? 'Permanent link copied' : 'Permanent link'}
+                </div>
+                <div className="share-url-row">
+                  <input
+                    ref={shareUrlInputRef}
+                    className="share-url"
+                    type="text"
+                    readOnly
+                    value={sharePopover.url}
+                    onFocus={(e) => e.currentTarget.select()}
+                    onKeyDown={closeShareOnEscape}
+                    aria-label="Share link"
+                  />
+                  <button type="button" className="share-copy-again" onClick={handleShare} onKeyDown={closeShareOnEscape}>
+                    Copy
+                  </button>
+                </div>
+                <p className="share-popover-body">
+                  Opens a copy of these {cells.length} cells as they are now. Outputs are not included.
+                </p>
+              </div>
+            )}
+          </div>
           <button
             className="examples-button"
             onClick={() => setShowGallery(true)}
-            disabled={pyodideStatus === 'loading'}
           >
             Examples
-          </button>
-          <button
-            className="run-button"
-            onClick={handleRun}
-            disabled={pyodideStatus !== 'ready' || isRunning}
-            title="Run code cell"
-          >
-            {isRunning ? 'Running...' : 'Run'}
-          </button>
-          <button
-            className="stop-button"
-            onClick={handleStop}
-            disabled={!isRunning}
-            title="Stop execution"
-          >
-            Stop
           </button>
         </div>
       </header>
@@ -532,32 +963,84 @@ function App() {
         {/* Left: Notebook (markdown + code cells) */}
         <div className="notebook-panel">
           <div className="notebook-header">
-            <div className="notebook-info">
-              <span className="notebook-name">Notebook</span>
+            <div className="notebook-toolbar" role="toolbar" aria-label="Kernel">
+              <button
+                className="run-button"
+                onClick={handleRunAllAndVisualize}
+                disabled={pyodideStatus === 'error' || isRunning}
+                title="Run every cell top to bottom, then show each Table operation step by step"
+              >
+                <span className="btn-icon" aria-hidden="true">▶▶</span>
+                {isRunning ? 'Running...' : 'Run all & visualize'}
+              </button>
+              <button
+                className="toolbar-button"
+                onClick={handleRunAll}
+                disabled={pyodideStatus === 'error' || isRunning}
+                title="Run every cell top to bottom without changing the visualization"
+              >
+                Run all
+              </button>
+              <button
+                className="toolbar-button"
+                onClick={handleVisualize}
+                disabled={isRunning}
+                title="Show the Table operations from the cells you have run since the last restart or Run all"
+              >
+                <span className="btn-icon" aria-hidden="true">◈</span>
+                Visualize
+              </button>
+              <button
+                className="toolbar-button icon-button stop-button"
+                onClick={handleStop}
+                disabled={!isRunning}
+                title="Interrupt the running cell (i i)"
+                aria-label="Interrupt"
+              >
+                <span className="btn-icon" aria-hidden="true">■</span>
+              </button>
+              <button
+                className="toolbar-button icon-button"
+                onClick={handleRestartKernel}
+                disabled={pyodideStatus === 'loading'}
+                title="Restart the kernel: names defined so far are forgotten and outputs cleared (0 0)"
+                aria-label="Restart kernel"
+              >
+                <span className="btn-icon" aria-hidden="true">↻</span>
+              </button>
+              <button
+                className="toolbar-button icon-button"
+                onClick={handleRestartAndRunAll}
+                disabled={pyodideStatus === 'loading'}
+                title="Restart the kernel, then run every cell"
+                aria-label="Restart kernel and run all"
+              >
+                <span className="btn-icon" aria-hidden="true">↻▶</span>
+              </button>
             </div>
-            <span className={`status ${pyodideStatus}`} role="status">
-              {statusMessage}
+            <span className={`status ${pyodideStatus}`} role="status" title={statusMessage}>
+              <span className="status-text">{statusMessage}</span>
             </span>
           </div>
 
-          <div className="notebook-cells-wrapper">
+          <div className="notebook-cells-wrapper fade-in" key={notebookVersion}>
             <NotebookCells
-              markdown={markdown}
-              onMarkdownChange={setMarkdown}
-              code={code}
-              onCodeChange={setCode}
-              isRunning={isRunning}
-              pyodideReady={pyodideStatus === 'ready'}
-              onRun={handleRun}
-              onStop={handleStop}
-              onEditorMount={(editor) => {
-                editorRef.current = editor;
-              }}
+              cells={cells}
+              onCellChange={handleCellChange}
+              onPatchCell={handlePatchCell}
+              onRunCell={handleRunCell}
+              onInsertCell={handleInsertCell}
+              onDeleteCell={handleDeleteCell}
+              onUndoDelete={handleUndoDelete}
+              onCopyCell={handleCopyCell}
+              onPasteCell={handlePasteCell}
+              onSetCellType={handleSetCellType}
+              onInterrupt={handleStop}
+              onRestartKernel={handleRestartKernel}
+              runningCellId={runningCellId}
+              kernelAvailable={pyodideStatus !== 'error'}
               onEditorWillMount={handleEditorWillMount}
               editorTheme={theme === 'jupyter' ? 'data8-light' : 'data8-dark'}
-              readOnlyCode={isRunning}
-              onFocusCodeCell={() => editorRef.current?.focus()}
-              output={output}
             />
           </div>
         </div>
@@ -580,11 +1063,11 @@ function App() {
         {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {/* Right: Visualization */}
-        <TracePanel output={output} slideshowRef={slideshowRef} />
+        <TracePanel output={output} slideshowRef={slideshowRef} version={visualizationVersion} />
       </div>
 
       {/* Hidden container for multi-step PDF export (off-screen, same layout as panel) */}
-      {isExportingPdf && output.trace && output.trace.length > 0 && (
+      {isExporting && output.trace && output.trace.length > 0 && (
         <div
           ref={exportContainerRef}
           className="export-pdf-container"

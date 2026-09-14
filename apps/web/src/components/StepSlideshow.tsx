@@ -107,7 +107,9 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
 
   return (
     <div className="step-slideshow" ref={ref}>
-      <StepCard frame={frame} />
+      <div className="step-frame fade-in" key={currentFrame}>
+        <StepCard frame={frame} />
+      </div>
 
       {/* Navigation Controls */}
       <div className="slideshow-controls">

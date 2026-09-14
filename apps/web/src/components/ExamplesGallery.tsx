@@ -9,15 +9,26 @@ interface ExamplesGalleryProps {
   onClose: () => void;
 }
 
+const CLOSE_MS = 140;
+
 export default function ExamplesGallery({ onSelectExample, onReset, onClose }: ExamplesGalleryProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [closing, setClosing] = useState(false);
+
+  /** Play the close animation, then unmount. `then` runs first so the notebook is ready behind the fade. */
+  const requestClose = (then?: () => void) => {
+    if (closing) return;
+    then?.();
+    setClosing(true);
+    window.setTimeout(onClose, CLOSE_MS);
+  };
 
   const filteredExamples = selectedCategory === 'all' 
     ? examples 
     : examples.filter(ex => ex.category === selectedCategory);
 
   return (
-    <div className="gallery-overlay">
+    <div className={`gallery-overlay ${closing ? 'is-closing' : ''}`}>
       <div className="gallery-modal">
         <div className="gallery-header">
           <div>
@@ -25,7 +36,7 @@ export default function ExamplesGallery({ onSelectExample, onReset, onClose }: E
             <p>Select an example to see how Table operations transform data step-by-step</p>
             <p className="inspiration">Inspired by <a href="https://pandastutor.com/" target="_blank" rel="noopener noreferrer">PandasTutor</a></p>
           </div>
-          <button className="close-button" onClick={onClose}>×</button>
+          <button className="close-button" onClick={() => requestClose()} aria-label="Close">×</button>
         </div>
 
         <div className="category-filter">
@@ -51,10 +62,7 @@ export default function ExamplesGallery({ onSelectExample, onReset, onClose }: E
             <button
               type="button"
               className="example-card example-card-reset"
-              onClick={() => {
-                onReset();
-                onClose();
-              }}
+              onClick={() => requestClose(onReset)}
             >
               <div className="example-thumbnail">
                 <div className="operation-badges">
@@ -73,10 +81,7 @@ export default function ExamplesGallery({ onSelectExample, onReset, onClose }: E
               type="button"
               key={example.id}
               className="example-card"
-              onClick={() => {
-                onSelectExample(example);
-                onClose();
-              }}
+              onClick={() => requestClose(() => onSelectExample(example))}
             >
               <div className="example-thumbnail">
                 <div className="operation-badges">
@@ -97,7 +102,7 @@ export default function ExamplesGallery({ onSelectExample, onReset, onClose }: E
         </div>
 
         <div className="gallery-footer">
-          <button className="secondary-button" onClick={onClose}>
+          <button className="secondary-button" onClick={() => requestClose()}>
             Close Gallery
           </button>
         </div>

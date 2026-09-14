@@ -5,9 +5,11 @@ import StepSlideshow from './StepSlideshow';
 interface TracePanelProps {
   output: PyodideOutput;
   slideshowRef?: RefObject<HTMLDivElement>;
+  /** Changes with each new visualization; keys the view so it fades in fresh */
+  version?: number;
 }
 
-export default function TracePanel({ output, slideshowRef }: TracePanelProps) {
+export default function TracePanel({ output, slideshowRef, version = 0 }: TracePanelProps) {
   const hasTrace = output.trace && output.trace.length > 0;
   const hasOutput = output.stdout || output.stderr || output.error;
 
@@ -19,7 +21,7 @@ export default function TracePanel({ output, slideshowRef }: TracePanelProps) {
 
       <div className="panel-content">
         {/* Trace View FIRST */}
-        <div className="trace-view">
+        <div className="trace-view fade-in" key={version}>
           {hasTrace ? (
             <StepSlideshow ref={slideshowRef} trace={output.trace!} />
           ) : hasOutput ? (

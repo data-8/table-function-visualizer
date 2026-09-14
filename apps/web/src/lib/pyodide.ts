@@ -19,8 +19,18 @@ export function stopExecutionHard(): void {
 export interface PyodideOutput {
   stdout: string;
   stderr: string;
+  /** repr() of a trailing bare expression, shown as the cell's Out[n] like a notebook */
+  result?: string;
+  /** Matplotlib figures drawn during the run, as PNGs (base64) with their display width in CSS px */
+  images?: Array<{ png: string; width: number }>;
   error?: string;
   trace?: TraceRecord[];
+}
+
+export interface RunOptions {
+  enableTracing?: boolean;
+  /** Start a fresh trace (true) or append to the trace of earlier cells in a Run-all (false) */
+  resetTrace?: boolean;
 }
 
 export interface Highlights {
@@ -89,6 +99,8 @@ export async function initPyodide(): Promise<PyodideInterface> {
       
       console.log('Pyodide loaded successfully');
       pyodideInstance = pyodide;
+      // Handy for debugging from the browser console
+      (window as unknown as { __pyodide?: PyodideInterface }).__pyodide = pyodide;
       
       // Install packages
       await installPackages(pyodide);
@@ -176,6 +188,29 @@ def __show_as_text(self, max_rows=0):
     print(self.as_text(max_rows))
 __show_as_text.__doc__ = __ds_tables.Table.show.__doc__
 __ds_tables.Table.show = __show_as_text
+
+# Plots: draw off-screen; figures left open after a cell are captured as PNGs (like %matplotlib inline)
+import matplotlib as __mpl
+__mpl.use('agg')
+import matplotlib.pyplot as __plt
+__plt.show = lambda *a, **k: None
+import warnings as __warnings
+__warnings.filterwarnings('ignore', message='.*non-interactive.*')
+
+def __capture_figures():
+    import io, base64
+    out = []
+    for num in __plt.get_fignums():
+        fig = __plt.figure(num)
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png', dpi=144, bbox_inches='tight', facecolor=fig.get_facecolor())
+        out.append({"png": base64.b64encode(buf.getvalue()).decode('ascii'), "width": int(fig.get_figwidth() * 96)})
+    __plt.close('all')
+    return out
+
+# Snapshot of the namespace after setup, so a kernel restart can forget everything cells defined
+__baseline_globals = dict(globals())
+__baseline_globals['__baseline_globals'] = __baseline_globals
 `);
 
     console.log('=== Package installation complete ===');
@@ -189,9 +224,10 @@ __ds_tables.Table.show = __show_as_text
 /**
  * Execute Python code and capture output
  */
-export async function runPythonCode(code: string, enableTracing = true): Promise<PyodideOutput> {
+export async function runPythonCode(code: string, options: RunOptions = {}): Promise<PyodideOutput> {
+  const { enableTracing = true, resetTrace = true } = options;
   const pyodide = await initPyodide();
-  
+
   const output: PyodideOutput = {
     stdout: '',
     stderr: '',
@@ -202,10 +238,8 @@ export async function runPythonCode(code: string, enableTracing = true): Promise
     if (enableTracing) {
       try {
         await pyodide.runPythonAsync(`
-# Clear and enable tracing
-clear_trace()
+${resetTrace ? 'clear_trace()' : ''}
 enable()
-print("✓ Tracing enabled for this run")
 `);
       } catch (e) {
         console.error('Failed to enable tracing:', e);
@@ -229,30 +263,41 @@ sys.stderr = __stderr_capture
     // empty .message while stderr is redirected, so we format the traceback ourselves
     // and keep any stdout / traced steps that happened before the failure.
     pyodide.globals.set('__user_code', code);
-    const errorText: string | null = await pyodide.runPythonAsync(`
+    const runInfo: string = await pyodide.runPythonAsync(`
 import linecache as __linecache
 import traceback as __traceback
 # Register the cell source so tracebacks can quote the offending line
 __linecache.cache['<cell>'] = (len(__user_code), None, __user_code.splitlines(True), '<cell>')
 __err = None
+__result = None
 try:
     # Like a notebook cell: run every statement, then echo the value of a trailing bare
     # expression (so a cell ending in \`t\` or \`t.where(...)\` shows its table).
     import ast as __ast
+    # IPython line magics (%matplotlib inline, %%time, ...) have no meaning here; blank them out
+    # but keep the line count so tracebacks still point at the right line
+    __user_code = '\\n'.join('' if l.lstrip().startswith('%') else l for l in __user_code.split('\\n'))
     __tree = __ast.parse(__user_code, '<cell>')
     __last = __tree.body.pop() if __tree.body and isinstance(__tree.body[-1], __ast.Expr) else None
     exec(compile(__tree, '<cell>', 'exec'), globals())
     if __last is not None:
         __val = eval(compile(__ast.Expression(__last.value), '<cell>', 'eval'), globals())
         if __val is not None:
-            print(repr(__val))
+            __result = repr(__val)
 except BaseException as __e:
     __te = __traceback.TracebackException.from_exception(__e)
     # Hide our exec() wrapper and the tracer's patched-method frames (both run from '<exec>')
     __te.stack = __traceback.StackSummary.from_list([f for f in __te.stack if f.filename != '<exec>'])
     __err = ''.join(__te.format())
-__err
+__images = __capture_figures()
+import json as __json
+__json.dumps({"error": __err, "result": __result, "images": __images})
 `);
+    const { error: errorText, result, images } = JSON.parse(runInfo) as {
+      error: string | null;
+      result: string | null;
+      images: Array<{ png: string; width: number }>;
+    };
 
     // Get captured output
     output.stdout = await pyodide.runPythonAsync(`
@@ -265,6 +310,12 @@ __stdout_capture.getvalue()
 __stderr_capture.getvalue()
 `);
 
+    if (result !== null) {
+      output.result = result;
+    }
+    if (images.length > 0) {
+      output.images = images;
+    }
     if (errorText) {
       output.error = errorText;
     }
@@ -303,6 +354,22 @@ sys.stderr = __old_stderr
   }
 
   return output;
+}
+
+/**
+ * Restart the kernel without reloading Python: every name defined by cells is forgotten and the
+ * trace is cleared, but the interpreter and installed packages stay (so it is instant).
+ */
+export async function restartKernelSoft(): Promise<void> {
+  const pyodide = await initPyodide();
+  await pyodide.runPythonAsync(`
+for __k in list(globals()):
+    if __k not in __baseline_globals:
+        del globals()[__k]
+globals().update(__baseline_globals)
+clear_trace()
+__plt.close('all')
+`);
 }
 
 /**

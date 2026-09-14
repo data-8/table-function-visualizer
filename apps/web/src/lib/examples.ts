@@ -7,10 +7,10 @@ export interface Example {
   id: string;
   title: string;
   description: string;
-  category: 'basics' | 'filtering' | 'sorting' | 'grouping' | 'joining' | 'transforming';
+  category: 'basics' | 'filtering' | 'sorting' | 'grouping' | 'joining' | 'transforming' | 'plotting';
   operations: string[]; // List of operations demonstrated
   markdown: string; // Note shown in the markdown cell above the code
-  code: string;
+  cells: string[]; // One entry per code cell, run top to bottom
   thumbnail?: string;
 }
 
@@ -26,25 +26,20 @@ export const examples: Example[] = [
 Step through the visualization and notice that the number of rows never changes; only the columns do.`,
     category: 'basics',
     operations: ['select'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
     'Age', make_array(20, 21, 20, 22),
     'Major', make_array('CS', 'Math', 'CS', 'Physics'),
     'GPA', make_array(3.8, 3.6, 3.9, 3.7)
 )
-
-print("Original table:")
-students.show()
-
-# Select just Name and GPA columns
+students`,
+      `# Select just Name and GPA columns
 result = students.select('Name', 'GPA')
-
-print("\\nAfter selecting Name and GPA:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -58,24 +53,19 @@ result.show()
 As you step through, watch each row get checked against the condition: kept rows are highlighted, and the ones that don't match are struck through before they disappear from the result.`,
     category: 'filtering',
     operations: ['where'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve'),
     'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math'),
     'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5)
 )
-
-print("Original table:")
-students.show()
-
-# Filter for CS majors only
+students`,
+      `# Filter for CS majors only
 cs_students = students.where('Major', 'CS')
-
-print("\\nCS majors only:")
-cs_students.show()
-`
+cs_students`
+    ]
   },
   
   {
@@ -89,23 +79,18 @@ cs_students.show()
 Every row survives a sort. Only their order changes. Watch the rows move in the step-through.`,
     category: 'sorting',
     operations: ['sort'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
     'GPA', make_array(3.8, 3.6, 3.9, 3.7)
 )
-
-print("Original table:")
-students.show()
-
-# Sort by GPA (highest first)
+students`,
+      `# Sort by GPA (highest first)
 sorted_students = students.sort('GPA', descending=True)
-
-print("\\nSorted by GPA (highest first):")
-sorted_students.show()
-`
+sorted_students`
+    ]
   },
   
   {
@@ -119,24 +104,19 @@ sorted_students.show()
 Here \`grades\` is an array we build first with \`make_array\`, then attach. Watch the new column appear on the right of the result.`,
     category: 'transforming',
     operations: ['with_column'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie'),
     'Score', make_array(85, 92, 78)
 )
-
-print("Original table:")
-students.show()
-
-# Add a Pass/Fail column
+students`,
+      `# Add a Pass/Fail column
 grades = make_array('Pass', 'Pass', 'Pass')
 result = students.with_column('Grade', grades)
-
-print("\\nWith Grade column added:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -150,25 +130,20 @@ result.show()
 Use it when a table has many columns and it is easier to say what you don't need.`,
     category: 'basics',
     operations: ['drop'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie'),
     'Age', make_array(20, 21, 20),
     'Major', make_array('CS', 'Math', 'CS'),
     'GPA', make_array(3.8, 3.6, 3.9)
 )
-
-print("Original table:")
-students.show()
-
-# Remove the Age column
+students`,
+      `# Remove the Age column
 result = students.drop('Age')
-
-print("\\nWithout Age column:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -182,24 +157,19 @@ result.show()
 Step through it: first the rows are gathered into groups, then the values in each group are collapsed into one number. Notice the new column is named \`Amount sum\`.`,
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import *
-import numpy as np
-
-# Sales data
+    cells: [
+      `from datascience import *
+import numpy as np`,
+      `# Sales data
 sales = Table().with_columns(
     'Product', make_array('Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget'),
     'Amount', make_array(100, 150, 120, 90, 180, 110)
 )
-
-print("Original sales data:")
-sales.show()
-
-# Group by product and sum amounts
+sales`,
+      `# Group by product and sum amounts
 totals = sales.group('Product', sum)
-
-print("\\nTotal sales by product:")
-totals.show()
-`
+totals`
+    ]
   },
   
   {
@@ -213,33 +183,25 @@ totals.show()
 Here both tables have an \`ID\` column. Watch the second table appear under the first, with matching keys highlighted as each row is paired up.`,
     category: 'joining',
     operations: ['join'],
-    code: `from datascience import *
-
-# Student names and majors
+    cells: [
+      `from datascience import *`,
+      `# Student names and majors
 students = Table().with_columns(
     'ID', make_array(1, 2, 3),
     'Name', make_array('Alice', 'Bob', 'Charlie'),
     'Major', make_array('CS', 'Math', 'CS')
 )
-
-# Student grades
+students`,
+      `# Student grades
 grades = Table().with_columns(
     'ID', make_array(1, 2, 3),
     'GPA', make_array(3.8, 3.6, 3.9)
 )
-
-print("Students table:")
-students.show()
-
-print("\\nGrades table:")
-grades.show()
-
-# Join on ID
+grades`,
+      `# Join on ID
 result = students.join('ID', grades)
-
-print("\\nJoined table:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -253,28 +215,23 @@ Because every \`Table\` method returns a new table, you can call another method 
 Read it top to bottom: keep the CS majors, keep only name and GPA, then sort. The visualization shows one step per method call.`,
     category: 'basics',
     operations: ['select', 'where', 'sort'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve'),
     'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math'),
     'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5),
     'Year', make_array(2, 3, 2, 4, 3)
 )
-
-print("Original table:")
-students.show()
-
-# Chain: filter CS majors, select Name and GPA, sort by GPA
+students`,
+      `# Chain: filter CS majors, select Name and GPA, sort by GPA
 result = (students
     .where('Major', 'CS')
     .select('Name', 'GPA')
     .sort('GPA', descending=True))
-
-print("\\nCS majors with highest GPAs:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -288,32 +245,23 @@ A second \`where\` on the result of the first narrows things down further. \`are
 Compare the two filter steps: the first checks the Major column, the second checks GPA against a threshold.`,
     category: 'filtering',
     operations: ['where'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'),
     'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math', 'CS'),
     'GPA', make_array(3.8, 3.6, 3.9, 3.7, 3.5, 3.4),
     'Year', make_array(2, 3, 2, 4, 3, 1)
 )
-
-print("Original table:")
-students.show()
-
-# Filter for CS majors
+students`,
+      `# Filter for CS majors
 cs_students = students.where('Major', 'CS')
-
-print("\\nStep 1 - CS majors:")
-cs_students.show()
-
-# Then filter for GPA > 3.5
-from datascience import are
+cs_students`,
+      `# Then filter for GPA > 3.5
 high_gpa = cs_students.where('GPA', are.above(3.5))
-
-print("\\nStep 2 - CS majors with GPA > 3.5:")
-high_gpa.show()
-`
+high_gpa`
+    ]
   },
   
   {
@@ -327,24 +275,19 @@ high_gpa.show()
 Here every Product becomes a column and every Region a row, and each cell is the sum of Sales for that pair. Step through to see the source rows feed each cell.`,
     category: 'transforming',
     operations: ['pivot'],
-    code: `from datascience import *
-
-# Sales data by region and product
+    cells: [
+      `from datascience import *`,
+      `# Sales data by region and product
 sales = Table().with_columns(
     'Region', make_array('North', 'South', 'North', 'South', 'North', 'South'),
     'Product', make_array('Widget', 'Widget', 'Gadget', 'Gadget', 'Widget', 'Gadget'),
     'Sales', make_array(100, 120, 150, 140, 110, 160)
 )
-
-print("Original sales data:")
-sales.show()
-
-# Pivot to show regions as rows, products as columns
+sales`,
+      `# Pivot to show regions as rows, products as columns
 pivoted = sales.pivot('Product', 'Region', 'Sales', sum)
-
-print("\\nPivoted table (Products as columns):")
-pivoted.show()
-`
+pivoted`
+    ]
   },
   
   {
@@ -358,30 +301,22 @@ The function you pass to \`group\` decides what each group collapses to. \`np.me
 The groups are identical in both calls. Only the number in the second column changes, and so does its name: \`Score mean\` versus \`Score max\`.`,
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import *
-import numpy as np
-
-# Student scores by major
+    cells: [
+      `from datascience import *
+import numpy as np`,
+      `# Student scores by major
 scores = Table().with_columns(
     'Major', make_array('CS', 'Math', 'CS', 'Math', 'CS', 'Physics', 'Math'),
     'Score', make_array(85, 90, 92, 88, 87, 95, 89)
 )
-
-print("Original scores:")
-scores.show()
-
-# Group by major and compute average
+scores`,
+      `# Group by major and compute average
 avg_scores = scores.group('Major', np.mean)
-
-print("\\nAverage scores by major:")
-avg_scores.show()
-
-# Group by major and compute maximum
+avg_scores`,
+      `# Group by major and compute maximum
 max_scores = scores.group('Major', max)
-
-print("\\nMaximum scores by major:")
-max_scores.show()
-`
+max_scores`
+    ]
   },
   
   {
@@ -395,34 +330,26 @@ max_scores.show()
 Watch the keys get matched one at a time, and notice the joined table keeps the columns from both.`,
     category: 'joining',
     operations: ['join'],
-    code: `from datascience import *
-
-# Student enrollment info
+    cells: [
+      `from datascience import *`,
+      `# Student enrollment info
 enrollment = Table().with_columns(
     'StudentID', make_array(1, 2, 3, 4),
     'Course', make_array('CS101', 'MATH101', 'CS101', 'PHYS101'),
     'Grade', make_array('A', 'B', 'A', 'A')
 )
-
-# Student information
+enrollment`,
+      `# Student information
 students = Table().with_columns(
     'StudentID', make_array(1, 2, 3, 4),
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana'),
     'Major', make_array('CS', 'Math', 'CS', 'Physics')
 )
-
-print("Enrollment table:")
-enrollment.show()
-
-print("\\nStudents table:")
-students.show()
-
-# Join on StudentID
+students`,
+      `# Join on StudentID
 result = students.join('StudentID', enrollment)
-
-print("\\nJoined table:")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -436,30 +363,25 @@ This is the shape of most real analyses: filter down to the rows you care about,
 Watch how the table changes character at each step, from individual transactions to one row per product. The sort uses \`Amount sum\`, the column that \`group\` created.`,
     category: 'basics',
     operations: ['select', 'where', 'group', 'sort', 'join'],
-    code: `from datascience import *
-import numpy as np
-
-# Sales transactions
+    cells: [
+      `from datascience import *
+import numpy as np`,
+      `# Sales transactions
 transactions = Table().with_columns(
     'Product', make_array('Widget', 'Gadget', 'Widget', 'Gizmo', 'Gadget', 'Widget', 'Gizmo'),
     'Category', make_array('Electronics', 'Electronics', 'Electronics', 'Home', 'Electronics', 'Electronics', 'Home'),
     'Amount', make_array(100, 150, 120, 90, 180, 110, 85),
     'Region', make_array('North', 'South', 'North', 'North', 'South', 'North', 'South')
 )
-
-print("Original transactions:")
-transactions.show()
-
-# Filter Electronics, group by Product, then sort
+transactions`,
+      `# Filter Electronics, group by Product, then sort
 result = (transactions
     .where('Category', 'Electronics')
     .select('Product', 'Amount', 'Region')
     .group('Product', np.sum)
     .sort('Amount sum', descending=True))
-
-print("\\nElectronics products by total sales (sorted):")
-result.show()
-`
+result`
+    ]
   },
   
   {
@@ -473,24 +395,19 @@ result.show()
 Row positions start at 0. Watch the first three rows get picked out and the rest fall away.`,
     category: 'basics',
     operations: ['take'],
-    code: `from datascience import *
-
-# Sample student data
+    cells: [
+      `from datascience import *`,
+      `# Sample student data
 students = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank', 'Grace'),
     'Age', make_array(20, 21, 20, 22, 19, 21, 20),
     'Major', make_array('CS', 'Math', 'CS', 'Physics', 'Math', 'CS', 'Physics')
 )
-
-print("Original table:")
-students.show()
-
-# Take first 3 rows
+students`,
+      `# Take first 3 rows
 sample = students.take(3)
-
-print("\\nFirst 3 rows:")
-sample.show()
-`
+sample`
+    ]
   },
   
   {
@@ -504,24 +421,19 @@ Each student took each subject once, so the pivot has one row per student and on
 Step through and check that every (student, subject) pair from the original table lands in exactly one cell.`,
     category: 'transforming',
     operations: ['pivot'],
-    code: `from datascience import *
-
-# Exam scores by student, subject, and semester
+    cells: [
+      `from datascience import *`,
+      `# Exam scores by student, subject, and semester
 scores = Table().with_columns(
     'Student', make_array('Alice', 'Bob', 'Alice', 'Bob', 'Charlie', 'Charlie'),
     'Subject', make_array('Math', 'Math', 'Science', 'Science', 'Math', 'Science'),
     'Score', make_array(85, 90, 88, 92, 87, 89)
 )
-
-print("Original scores:")
-scores.show()
-
-# Pivot to show students as rows, subjects as columns
+scores`,
+      `# Pivot to show students as rows, subjects as columns
 pivoted = scores.pivot('Subject', 'Student', 'Score', sum)
-
-print("\\nPivoted (Students × Subjects):")
-pivoted.show()
-`
+pivoted`
+    ]
   },
   
   {
@@ -535,30 +447,22 @@ Grouping by Region with \`sum\` gives each region's total; grouping with \`np.me
 Notice the group step happens first in both calls, and the aggregation happens after.`,
     category: 'grouping',
     operations: ['group'],
-    code: `from datascience import *
-import numpy as np
-
-# Sales data by region
+    cells: [
+      `from datascience import *
+import numpy as np`,
+      `# Sales data by region
 sales = Table().with_columns(
     'Region', make_array('North', 'South', 'North', 'South', 'East', 'East', 'North'),
     'Amount', make_array(100, 150, 120, 180, 90, 110, 130)
 )
-
-print("Original sales:")
-sales.show()
-
-# Group by region and compute sum
+sales`,
+      `# Group by region and compute sum
 total_by_region = sales.group('Region', sum)
-
-print("\\nTotal sales by region:")
-total_by_region.show()
-
-# Group by region and compute mean
+total_by_region`,
+      `# Group by region and compute mean
 avg_by_region = sales.group('Region', np.mean)
-
-print("\\nAverage sales by region:")
-avg_by_region.show()
-`
+avg_by_region`
+    ]
   },
   
   {
@@ -572,46 +476,112 @@ A four-step analysis, one method at a time. Keep employees with at least three y
 Watch the \`Years\` column disappear after the group step: once rows are collapsed into groups, only the aggregated columns remain.`,
     category: 'basics',
     operations: ['where', 'group', 'sort', 'select'],
-    code: `from datascience import *
-import numpy as np
-
-# Employee performance data
+    cells: [
+      `from datascience import *
+import numpy as np`,
+      `# Employee performance data
 employees = Table().with_columns(
     'Name', make_array('Alice', 'Bob', 'Charlie', 'Diana', 'Eve', 'Frank'),
     'Department', make_array('Sales', 'Engineering', 'Sales', 'Engineering', 'Sales', 'Engineering'),
     'Score', make_array(85, 92, 78, 95, 88, 90),
     'Years', make_array(2, 5, 1, 4, 3, 6)
 )
-
-print("Original employee data:")
-employees.show()
-
-# Filter experienced employees (Years >= 3)
-from datascience import are
+employees`,
+      `# Filter experienced employees (Years >= 3)
 experienced = employees.where('Years', are.above_or_equal_to(3))
-
-print("\\nStep 1 - Experienced employees:")
-experienced.show()
-
-# Group by department and compute average score
+experienced`,
+      `# Group by department and compute average score
 dept_avg = experienced.group('Department', np.mean)
-
-print("\\nStep 2 - Average score by department:")
-dept_avg.show()
-
-# Sort by average score
+dept_avg`,
+      `# Sort by average score
 sorted_dept = dept_avg.sort('Score mean', descending=True)
-
-print("\\nStep 3 - Departments sorted by average score:")
-sorted_dept.show()
-
-# Select relevant columns
+sorted_dept`,
+      `# Select relevant columns
 final = sorted_dept.select('Department', 'Score mean')
+final`
+    ]
+  },
+  {
+    id: 'scatter-plot',
+    title: 'Scatter Plot',
+    description: 'Plot two numerical columns against each other',
+    markdown: `## Scatter plot
 
-print("\\nStep 4 - Final result:")
-final.show()
-`
-  }
+\`scatter(x_column, y_column)\` draws one point per row. It is the first thing to try when you want to know whether two numerical variables are related.
+
+\`fit_line=True\` adds the least-squares regression line. Look at how closely the points follow it: hours studied and exam score are strongly associated here.`,
+    category: 'plotting',
+    operations: ['scatter'],
+    cells: [
+      `from datascience import *
+import numpy as np
+import matplotlib.pyplot as plots
+plots.style.use('fivethirtyeight')`,
+      `# Hours studied and exam score for eight students
+study = Table().with_columns(
+    'Hours', make_array(1, 2, 2.5, 3, 4, 5, 6, 7),
+    'Score', make_array(52, 58, 61, 66, 70, 78, 84, 90)
+)
+study`,
+      `# One point per row, plus the line of best fit
+study.scatter('Hours', 'Score', fit_line=True)`
+    ]
+  },
+  {
+    id: 'histogram',
+    title: 'Histogram',
+    description: 'See the distribution of one numerical column',
+    markdown: `## Histogram
+
+\`hist(column, bins=...)\` shows how the values of one column are distributed. Each bar covers a bin, and the bins are half-open: the bin \`[21, 24)\` contains 21, 22 and 23 but not 24.
+
+The vertical axis is percent per unit, so the *area* of a bar is the percent of rows in that bin. That is why the bars stay comparable even when bins have different widths.`,
+    category: 'plotting',
+    operations: ['hist'],
+    cells: [
+      `from datascience import *
+import numpy as np
+import matplotlib.pyplot as plots
+plots.style.use('fivethirtyeight')`,
+      `# Ages of twelve students
+ages = Table().with_columns(
+    'Name', make_array('Ana', 'Ben', 'Cy', 'Di', 'Ed', 'Flo', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kim', 'Lee'),
+    'Age', make_array(19, 20, 20, 21, 21, 21, 22, 22, 23, 24, 26, 29)
+)
+ages`,
+      `# Bins of width 3, starting at 18
+ages.hist('Age', bins=np.arange(18, 31, 3))`
+    ]
+  },
+  {
+    id: 'bar-chart',
+    title: 'Bar Chart',
+    description: 'Compare counts across categories',
+    markdown: `## Bar chart
+
+Categorical data is summarised with \`group\`, which produces one row per category and a \`count\` column. \`barh(category_column)\` then draws one horizontal bar per row, using the category column for the labels and the remaining numerical columns for the bar lengths.
+
+Sorting the grouped table first makes the chart easier to read. Step through the visualization to watch the rows collapse into groups before the chart is drawn.`,
+    category: 'plotting',
+    operations: ['group', 'sort', 'barh'],
+    cells: [
+      `from datascience import *
+import numpy as np
+import matplotlib.pyplot as plots
+plots.style.use('fivethirtyeight')`,
+      `# Declared majors of ten students
+majors = Table().with_columns(
+    'Name', make_array('Ana', 'Ben', 'Cy', 'Di', 'Ed', 'Flo', 'Gus', 'Hal', 'Ivy', 'Jo'),
+    'Major', make_array('CS', 'Math', 'CS', 'Physics', 'CS', 'Math', 'CS', 'Econ', 'Math', 'CS')
+)
+majors`,
+      `# One row per major with how many students chose it
+counts = majors.group('Major')
+counts`,
+      `# Largest first, then one bar per row
+counts.sort('count', descending=True).barh('Major')`
+    ]
+  },
 ];
 
 export function getExamplesByCategory(category: Example['category']): Example[] {
@@ -629,5 +599,6 @@ export const categories = [
   { id: 'grouping', name: 'Grouping', description: 'Aggregate and summarize' },
   { id: 'joining', name: 'Joining', description: 'Combine multiple tables' },
   { id: 'transforming', name: 'Transforming', description: 'Modify table structure' },
+  { id: 'plotting', name: 'Plotting', description: 'Draw charts from a table' },
 ] as const;
 
