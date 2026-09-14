@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: apps/web/package-lock.json
 
@@ -39,9 +39,10 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
+          cache-dependency-path: apps/web/requirements-test.txt
 
-      - name: Install datascience for tracer tests
-        run: pip install datascience==0.18.1 matplotlib numpy
+      - name: Install Python packages for tracer tests
+        run: pip install -r apps/web/requirements-test.txt
 
       - name: Lint and test
         run: |

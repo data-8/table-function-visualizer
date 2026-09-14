@@ -1,0 +1,4 @@
+# Python packages for the tracer tests (npm run test:tracer). Pinned to what the app installs in Pyodide.
+datascience==0.18.1
+matplotlib
+numpy
