@@ -91,6 +91,7 @@ class TracerTest(unittest.TestCase):
         details = [s.get('detail') for s in rec['sub_steps'] if s.get('detail')]
         self.assertEqual(details, ['double(19) = 38', 'double(20) = 40', 'double(21) = 42', 'double(22) = 44'])
         self.assertEqual(rec['sub_steps'][1]['input_highlights'], {'rows': [0], 'columns': ['Age']})
+        self.assertTrue(rec['sub_steps'][1]['message'].startswith('Row 0:'), 'rows are numbered from 0, like take() and row()')
         self.assertEqual(rec['sub_steps'][1]['output_highlights'], {'cells': [[0, 'double(Age)']]})
 
     def test_apply_with_two_columns_and_with_whole_row(self):

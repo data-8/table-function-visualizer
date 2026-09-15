@@ -4,6 +4,9 @@ import { formatValue, isNumericColumn } from './DataTransformation';
 describe('formatValue', () => {
   it('renders null/undefined as empty string', () => {
     expect(formatValue(null)).toBe('');
+    expect(formatValue(true)).toBe('True');
+    expect(formatValue(false)).toBe('False');
+    expect(formatValue([true, 1])).toBe('[True, 1]');
     expect(formatValue(undefined)).toBe('');
   });
 

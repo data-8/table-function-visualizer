@@ -474,7 +474,7 @@ def _sub_steps_pivot(table, args, kwargs, input_state, output_state):
             if not count_mode:
                 input_hl["cells"] = [[i, values_label]]
             steps.append({
-                "message": f"Row {i + 1} has ({rows_label}={_fmt_val(rows_data[i])}, {columns_label}={_fmt_val(cols_data[i])}) → {action}.",
+                "message": f"Row {i} has ({rows_label}={_fmt_val(rows_data[i])}, {columns_label}={_fmt_val(cols_data[i])}) → {action}.",
                 "input_highlights": input_hl,
                 "output_highlights": {"cells": [[ri, out_cols[ci]]]},
                 "output_state": _make_state(out_cols, _copy_grid(grid)),
@@ -582,7 +582,7 @@ def _sub_steps_sort(table, args, kwargs, input_state, output_state):
             order = order[::-1]
         steps.append({
             "message": "Rows keep all their values. Only their order changes.",
-            "detail": f"New order of original row positions: {_fmt_list([int(i) + 1 for i in order])}",
+            "detail": f"New order of original row positions (starting at 0): {_fmt_list([int(i) for i in order])}",
             "output_highlights": {"columns": [label]},
         })
     except Exception:
@@ -738,12 +738,12 @@ def _sub_steps_apply(table, args, kwargs, input_state, output_state):
     for i in range(per_row):
         if cols:
             arg_text = ", ".join(_fmt_val(col_vals[c][i]) for c in cols)
-            message = f"Row {i + 1}: {fname} is called with {arg_text} and returns {_fmt_val(results[i])}."
+            message = f"Row {i}: {fname} is called with {arg_text} and returns {_fmt_val(results[i])}."
             detail = f"{label.split('(')[0]}({arg_text}) = {_fmt_val(results[i])}"
         else:
             row_text = ", ".join(f"{c}={_fmt_val(all_vals[c][i])}" for c in labels)
-            message = f"Row {i + 1}: {fname} is called with the whole row ({row_text}) and returns {_fmt_val(results[i])}."
-            detail = f"{label.split('(')[0]}(row {i + 1}) = {_fmt_val(results[i])}"
+            message = f"Row {i}: {fname} is called with the whole row ({row_text}) and returns {_fmt_val(results[i])}."
+            detail = f"{label.split('(')[0]}(row {i}) = {_fmt_val(results[i])}"
         steps.append({
             "message": message,
             "detail": detail,
@@ -771,8 +771,8 @@ def _first_column_summary(input_state, idx):
     """Short description of a row for messages, e.g. row 3 (Bob)."""
     preview = input_state.get("preview", [])
     if 0 <= idx < len(preview) and preview[idx]:
-        return f"row {idx + 1} ({_fmt_val(preview[idx][0])})"
-    return f"row {idx + 1}"
+        return f"row {idx} ({_fmt_val(preview[idx][0])})"
+    return f"row {idx}"
 
 def _sub_steps_sample(table, args, kwargs, input_state, output_state):
     indices = _last_random.get("choice")
@@ -818,7 +818,7 @@ def _sub_steps_sample(table, args, kwargs, input_state, output_state):
         })
     steps.append({
         "message": f"The sample is a new table of {k} row{'s' if k != 1 else ''} with the same columns.",
-        "detail": f"Original row positions drawn: {_fmt_list([i + 1 for i in indices])}",
+        "detail": f"Original row positions drawn (starting at 0): {_fmt_list(indices)}",
         "output_label": "Sample",
     })
     return steps
@@ -838,7 +838,7 @@ def _sub_steps_shuffle(table, args, kwargs, input_state, output_state):
         },
         {
             "message": "The rows land in the order they were drawn.",
-            "detail": f"New order of original row positions: {_fmt_list([i + 1 for i in order])}",
+            "detail": f"New order of original row positions (starting at 0): {_fmt_list(order)}",
             "input_highlights": {"rows": [i for i in order[:_preview_len(output_state)] if i < n_in]},
         },
     ]
@@ -869,7 +869,7 @@ def _sub_steps_split(table, args, kwargs, input_state, output_state):
         },
         {
             "message": f"The first {k} shuffled row{'s' if k != 1 else ''} (highlighted) form the first table.",
-            "detail": f"Original row positions: {_fmt_list([i + 1 for i in first_idx])}",
+            "detail": f"Original row positions (starting at 0): {_fmt_list(first_idx)}",
             "input_highlights": {"rows": [i for i in first_idx if i < n_in]},
             "output_highlights": {"rows": list(range(_preview_len(output_state)))},
             "output_label": f"First table ({k} row{'s' if k != 1 else ''})",
@@ -877,7 +877,7 @@ def _sub_steps_split(table, args, kwargs, input_state, output_state):
         },
         {
             "message": f"The other {n_rest} row{'s' if n_rest != 1 else ''} form{'s' if n_rest == 1 else ''} the second table. Together they cover every original row.",
-            "detail": f"Original row positions: {_fmt_list([i + 1 for i in rest_idx])}",
+            "detail": f"Original row positions (starting at 0): {_fmt_list(rest_idx)}",
             "input_highlights": {"rows": [i for i in rest_idx if i < n_in]},
             "output_label": f"First table ({k} row{'s' if k != 1 else ''})",
             "aux_output": {"label": rest_aux["label"], "state": rest_state,

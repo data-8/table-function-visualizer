@@ -36,6 +36,10 @@ export function formatValue(value: unknown): string {
   if (Array.isArray(value)) {
     return '[' + value.map(formatValue).join(', ') + ']';
   }
+  // Booleans arrive as JSON true/false; show them the way Python (and the table) spells them
+  if (typeof value === 'boolean') {
+    return value ? 'True' : 'False';
+  }
   if (typeof value === 'number') {
     if (Number.isInteger(value)) {
       return value.toString();
