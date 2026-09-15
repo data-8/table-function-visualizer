@@ -796,6 +796,38 @@
   align-items: center;
 }
 
+/* Every step / Results only: same segmented idiom as the theme control */
+.detail-toggle {
+  display: flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--radius-control);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-subtle);
+}
+
+.detail-toggle button {
+  min-height: 24px;
+  padding: 0 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.detail-toggle button:hover:not(.active) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.detail-toggle button.active {
+  background: var(--bg-panel);
+  color: var(--accent-hover);
+  box-shadow: 0 0 0 1px var(--border-subtle);
+}
+
 .predict-toggle {
   min-height: 30px;
   padding: 0 0.6rem;

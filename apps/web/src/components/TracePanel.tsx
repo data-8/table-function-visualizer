@@ -1,6 +1,6 @@
 import type { RefObject } from 'react';
 import type { PyodideOutput } from '../lib/pyodide';
-import type { Frame } from '../lib/frames';
+import type { Frame, DetailLevel } from '../lib/frames';
 import StepSlideshow from './StepSlideshow';
 
 interface TracePanelProps {
@@ -15,9 +15,11 @@ interface TracePanelProps {
   /** Predict mode: results stay hidden until the student guesses */
   predict?: boolean;
   onTogglePredict?: () => void;
+  detail?: DetailLevel;
+  onDetailChange?: (detail: DetailLevel) => void;
 }
 
-export default function TracePanel({ output, slideshowRef, version = 0, onPresent, onFrameChange, predict = false, onTogglePredict }: TracePanelProps) {
+export default function TracePanel({ output, slideshowRef, version = 0, onPresent, onFrameChange, predict = false, onTogglePredict, detail = 'all', onDetailChange }: TracePanelProps) {
   const hasTrace = output.trace && output.trace.length > 0;
   const hasOutput = output.stdout || output.stderr || output.error;
 
@@ -26,6 +28,12 @@ export default function TracePanel({ output, slideshowRef, version = 0, onPresen
       <div className="panel-tabs">
         <div className="tab active">Visualization</div>
         <div className="panel-actions">
+        {onDetailChange && hasTrace && (
+          <div className="detail-toggle" role="group" aria-label="Detail level" title="Show every walkthrough frame, or only each operation's result">
+            <button type="button" className={detail === 'all' ? 'active' : ''} onClick={() => onDetailChange('all')} aria-pressed={detail === 'all'}>Every step</button>
+            <button type="button" className={detail === 'results' ? 'active' : ''} onClick={() => onDetailChange('results')} aria-pressed={detail === 'results'}>Results only</button>
+          </div>
+        )}
         {onTogglePredict && hasTrace && (
           <button
             type="button"
@@ -51,7 +59,7 @@ export default function TracePanel({ output, slideshowRef, version = 0, onPresen
         {/* Trace View FIRST */}
         <div className="trace-view fade-in" key={version}>
           {hasTrace ? (
-            <StepSlideshow ref={slideshowRef} trace={output.trace!} onFrameChange={onFrameChange} predict={predict} />
+            <StepSlideshow ref={slideshowRef} trace={output.trace!} onFrameChange={onFrameChange} predict={predict} detail={detail} />
           ) : hasOutput ? (
             <div className="empty-state">
               <h3>No table operations to show.</h3>

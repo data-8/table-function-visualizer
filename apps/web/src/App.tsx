@@ -11,7 +11,7 @@ import { initPyodide, runPythonCode, stopExecutionHard, restartKernelSoft, type 
 import { ipynbToJson, parseIpynb } from './lib/ipynb';
 import { encodeNotebook, decodeNotebook } from './lib/share';
 import { registerPythonCompletions, setUserNamesProvider, extractUserNames } from './lib/completions';
-import { flattenTrace, type Frame } from './lib/frames';
+import { framesFor, type Frame, type DetailLevel } from './lib/frames';
 import { type Example, getExampleById } from './lib/examples';
 import StepSlideshow from './components/StepSlideshow';
 
@@ -114,6 +114,8 @@ function App() {
     setActiveSite(cell && site ? { cellId: cell, start: site.stmt_start, end: site.stmt_end } : null);
   }, []);
   const [predict, setPredict] = useState(false);
+  /** Every walkthrough frame, or one result frame per operation (also governs exports) */
+  const [detail, setDetail] = useState<DetailLevel>('all');
   /** ?embed=1: a read-only notebook with no chrome, for iframes in the textbook or course site */
   const [embed] = useState(() => {
     try {
@@ -467,7 +469,7 @@ function App() {
         } else {
           // One PNG per step, named to sort in order and read on their own:
           // 01-with_columns.png, 02-where-part-1-of-3.png, ...
-          const frames = flattenTrace(output.trace!);
+          const frames = framesFor(output.trace!, detail);
           const files: Record<string, Uint8Array> = {};
           for (let i = 0; i < canvases.length; i++) {
             const frame = frames[i];
@@ -943,7 +945,7 @@ function App() {
 
   const handleSelectExample = (example: Example) => openNotebook(exampleCells(example), example.title);
 
-  const stepCount = output.trace?.length ? flattenTrace(output.trace).length : 0;
+  const stepCount = output.trace?.length ? framesFor(output.trace, detail).length : 0;
 
   return (
     <div className={`app ${embed ? 'is-embed' : ''}`}>
@@ -1249,6 +1251,8 @@ function App() {
           onFrameChange={handleFrameChange}
           predict={predict}
           onTogglePredict={() => setPredict(v => !v)}
+          detail={detail}
+          onDetailChange={setDetail}
         />
       </div>
 
@@ -1263,7 +1267,7 @@ function App() {
             </button>
           </div>
           <div className="presentation-body">
-            <StepSlideshow trace={output.trace} />
+            <StepSlideshow trace={output.trace} detail={detail} autoplay />
           </div>
         </div>
       )}
@@ -1281,7 +1285,7 @@ function App() {
             zIndex: -1,
           }}
         >
-          {flattenTrace(output.trace).map((frame, i) => (
+          {framesFor(output.trace, detail).map((frame, i) => (
             <StepCard key={i} frame={frame} />
           ))}
         </div>

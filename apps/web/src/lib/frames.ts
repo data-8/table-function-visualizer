@@ -28,8 +28,27 @@ export function flattenTrace(trace: TraceRecord[]): Frame[] {
   return frames;
 }
 
+/** How much of each operation to show: every walkthrough frame, or just its result */
+export type DetailLevel = 'all' | 'results';
+
+/** One frame per operation, without the walkthrough: the plain before/after view. */
+export function resultFrames(trace: TraceRecord[]): Frame[] {
+  return trace.map((record, opIndex) => ({ record, opIndex, opTotal: trace.length }));
+}
+
+export function framesFor(trace: TraceRecord[], detail: DetailLevel): Frame[] {
+  return detail === 'results' ? resultFrames(trace) : flattenTrace(trace);
+}
+
 /** Index of the first frame belonging to the given operation. */
 export function firstFrameOfOperation(frames: Frame[], opIndex: number): number {
   const idx = frames.findIndex(f => f.opIndex === opIndex);
   return idx === -1 ? 0 : idx;
+}
+
+/** Index of the last frame (the result) of the given operation. */
+export function lastFrameOfOperation(frames: Frame[], opIndex: number): number {
+  let last = -1;
+  frames.forEach((f, i) => { if (f.opIndex === opIndex) last = i; });
+  return last === -1 ? frames.length - 1 : last;
 }

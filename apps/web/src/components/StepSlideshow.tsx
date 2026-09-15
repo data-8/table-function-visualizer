@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo, forwardRef, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, forwardRef, type ReactNode } from 'react';
 import type { TraceRecord } from '../lib/pyodide';
-import { flattenTrace, firstFrameOfOperation, type Frame } from '../lib/frames';
+import { framesFor, firstFrameOfOperation, lastFrameOfOperation, type Frame, type DetailLevel } from '../lib/frames';
 import DataTransformation from './DataTransformation';
 import './StepSlideshow.css';
 
@@ -79,6 +79,10 @@ interface StepSlideshowProps {
   onFrameChange?: (frame: Frame) => void;
   /** Predict mode: hide each operation's result until the student commits to a guess */
   predict?: boolean;
+  /** Every walkthrough frame, or one result frame per operation */
+  detail?: DetailLevel;
+  /** Presentation: offer autoplay (Space) with a speed control */
+  autoplay?: boolean;
 }
 
 interface Prediction {
@@ -120,9 +124,13 @@ function PredictCard({ isArray, before, guess, onChange, onCheck, onReveal }: {
   );
 }
 
-const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function StepSlideshow({ trace, onFrameChange, predict = false }, ref) {
-  const frames = useMemo(() => flattenTrace(trace), [trace]);
+const AUTOPLAY_SPEEDS = [1, 2, 3, 5] as const;
+
+const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function StepSlideshow({ trace, onFrameChange, predict = false, detail = 'all', autoplay = false }, ref) {
+  const frames = useMemo(() => framesFor(trace, detail), [trace, detail]);
   const [currentFrame, setCurrentFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [secondsPerFrame, setSecondsPerFrame] = useState<number>(2);
   /** Predict mode bookkeeping, per operation index */
   const [guesses, setGuesses] = useState<Record<number, Prediction>>({});
   const [revealed, setRevealed] = useState<Record<number, 'checked' | 'shown'>>({});
@@ -135,12 +143,56 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
     setCurrentFrame(prev => Math.min(frames.length - 1, prev + 1));
   }, [frames.length]);
 
-  // Reset to first frame when trace changes
+  /** Skip to the result of the current operation, or of the next one if already there */
+  const goToResult = useCallback(() => {
+    setCurrentFrame(prev => {
+      const op = frames[Math.min(prev, frames.length - 1)]?.opIndex ?? 0;
+      const end = lastFrameOfOperation(frames, op);
+      if (prev < end) return end;
+      const nextOp = Math.min(op + 1, (frames[frames.length - 1]?.opIndex ?? 0));
+      return lastFrameOfOperation(frames, nextOp);
+    });
+  }, [frames]);
+
+  /** Back to the start of the current operation, or of the previous one if already there */
+  const goToStart = useCallback(() => {
+    setCurrentFrame(prev => {
+      const op = frames[Math.min(prev, frames.length - 1)]?.opIndex ?? 0;
+      const start = firstFrameOfOperation(frames, op);
+      if (prev > start) return start;
+      return firstFrameOfOperation(frames, Math.max(0, op - 1));
+    });
+  }, [frames]);
+
+  // Reset to first frame when the trace changes; keep the operation when only the detail level changes
   useEffect(() => {
     setCurrentFrame(0);
     setGuesses({});
     setRevealed({});
+    setPlaying(false);
   }, [trace]);
+  const lastDetailRef = useRef(detail);
+  useEffect(() => {
+    if (lastDetailRef.current === detail) return;
+    lastDetailRef.current = detail;
+    setCurrentFrame(prev => {
+      // prev indexes the old frame list; map through the operation it was on
+      const oldFrames = framesFor(trace, detail === 'all' ? 'results' : 'all');
+      const op = oldFrames[Math.min(prev, oldFrames.length - 1)]?.opIndex ?? 0;
+      return firstFrameOfOperation(frames, op);
+    });
+  }, [detail, trace, frames]);
+
+  // Autoplay (presentation only): advance on a timer, stop at the end
+  useEffect(() => {
+    if (!playing) return;
+    if (currentFrame >= frames.length - 1) {
+      setPlaying(false);
+      return;
+    }
+    const id = setTimeout(() => setCurrentFrame(f => Math.min(frames.length - 1, f + 1)), secondsPerFrame * 1000);
+    return () => clearTimeout(id);
+  }, [playing, currentFrame, frames.length, secondsPerFrame]);
 
   useEffect(() => {
     const frame = frames[Math.min(currentFrame, frames.length - 1)];
@@ -150,18 +202,25 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
   // Keyboard navigation
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.closest('.monaco-editor'))) return;
       if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
         e.preventDefault();
-        goToPrevious();
+        setPlaying(false);
+        if (e.shiftKey) goToStart(); else goToPrevious();
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
         e.preventDefault();
-        goToNext();
+        setPlaying(false);
+        if (e.shiftKey) goToResult(); else goToNext();
+      } else if (autoplay && e.key === ' ') {
+        e.preventDefault();
+        setPlaying(p => !p);
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [goToNext, goToPrevious]);
+  }, [goToNext, goToPrevious, goToStart, goToResult, autoplay]);
 
   if (!trace || trace.length === 0 || frames.length === 0) {
     return null;
@@ -215,27 +274,39 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
 
       {/* Navigation Controls */}
       <div className="slideshow-controls">
-        <button
-          className="nav-button prev"
-          onClick={goToPrevious}
-          disabled={isFirst}
-          title="Previous step"
-        >
-          <span className="arrow">‹</span>
-          <span className="nav-text">Previous</span>
-        </button>
+        <div className="nav-group">
+          <button
+            type="button"
+            className="skip-button"
+            onClick={goToStart}
+            disabled={isFirst}
+            title="Back to the start of this operation (Shift+←)"
+            aria-label="Back to start of operation"
+          >
+            <span className="arrow">«</span>
+          </button>
+          <button
+            className="nav-button prev"
+            onClick={goToPrevious}
+            disabled={isFirst}
+            title="Previous step (←)"
+          >
+            <span className="arrow">‹</span>
+            <span className="nav-text">Previous</span>
+          </button>
+        </div>
 
         {/* One dot per operation; the active operation shows sub-progress */}
         <div className="step-dots">
           {trace.map((record, opIndex) => {
             const isActive = opIndex === frame.opIndex;
-            const subCount = record.sub_steps?.length ?? 0;
+            const subCount = isActive ? (frame.subTotal ?? 0) : 0;
             return (
               <button
                 key={opIndex}
                 className={`dot ${isActive ? 'active' : ''}`}
-                onClick={() => setCurrentFrame(firstFrameOfOperation(frames, opIndex))}
-                title={`Go to step ${opIndex + 1}: ${record.operation}()`}
+                onClick={() => setCurrentFrame(isActive ? lastFrameOfOperation(frames, opIndex) : firstFrameOfOperation(frames, opIndex))}
+                title={isActive ? `Skip to the result of ${record.operation}()` : `Go to step ${opIndex + 1}: ${record.operation}()`}
               >
                 {isActive && subCount > 1 && (
                   <span className="dot-sub-label">{(frame.subIndex ?? 0) + 1}/{subCount}</span>
@@ -245,20 +316,46 @@ const StepSlideshow = forwardRef<HTMLDivElement, StepSlideshowProps>(function St
           })}
         </div>
 
-        <button
-          className="nav-button next"
-          onClick={goToNext}
-          disabled={isLast}
-          title="Next step"
-        >
-          <span className="nav-text">Next</span>
-          <span className="arrow">›</span>
-        </button>
+        <div className="nav-group">
+          <button
+            className="nav-button next"
+            onClick={goToNext}
+            disabled={isLast}
+            title="Next step (→)"
+          >
+            <span className="nav-text">Next</span>
+            <span className="arrow">›</span>
+          </button>
+          <button
+            type="button"
+            className="skip-button"
+            onClick={goToResult}
+            disabled={isLast}
+            title="Skip to the result of this operation (Shift+→)"
+            aria-label="Skip to result"
+          >
+            <span className="arrow">»</span>
+          </button>
+        </div>
       </div>
+
+      {autoplay && (
+        <div className="autoplay-controls">
+          <button type="button" className={`autoplay-toggle ${playing ? 'is-playing' : ''}`} onClick={() => setPlaying(p => !p)} disabled={isLast && !playing} title="Play or pause (Space)">
+            {playing ? 'Pause' : 'Play'}
+          </button>
+          <label className="autoplay-speed">
+            <span>every</span>
+            <select value={secondsPerFrame} onChange={(e) => setSecondsPerFrame(Number(e.target.value))}>
+              {AUTOPLAY_SPEEDS.map(sec => <option key={sec} value={sec}>{sec} s</option>)}
+            </select>
+          </label>
+        </div>
+      )}
 
       {/* Keyboard Hint */}
       <div className="keyboard-hint">
-        Use arrow keys to navigate
+        Arrow keys step{autoplay ? ', Space plays' : ''}; Shift+arrows jump to the result or start of an operation
       </div>
     </div>
   );
