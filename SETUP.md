@@ -4,12 +4,12 @@
 
 Before you begin, ensure you have the following installed:
 
-1. **Node.js** (v18 or higher)
+1. **Node.js** (v20 or higher; CI uses 22)
    - Download from: https://nodejs.org/
    - Or use a version manager like `nvm`:
      ```bash
-     nvm install 18
-     nvm use 18
+     nvm install 22
+     nvm use 22
      ```
 
 2. **A package manager** (one of the following):
