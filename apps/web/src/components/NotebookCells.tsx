@@ -228,7 +228,7 @@ function CodeCell({
   const monacoRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
   const decorationsRef = useRef<MonacoEditor.IEditorDecorationsCollection | null>(null);
 
-  // Mark the statement the visualization is showing and bring it into view
+  // Mark the statement the visualization is showing (without scrolling to it)
   useEffect(() => {
     const editor = monacoRef.current;
     if (!editor) return;
@@ -241,8 +241,7 @@ function CodeCell({
       range: { startLineNumber: highlightLines.start, startColumn: 1, endLineNumber: highlightLines.end, endColumn: 1 },
       options: { isWholeLine: true, className: 'trace-line', linesDecorationsClassName: 'trace-line-gutter' },
     }]);
-    editor.revealLinesInCenterIfOutsideViewport(highlightLines.start, highlightLines.end);
-    wrapperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Highlight only: no scrolling, so stepping through the visualization never moves the reader
   }, [highlightLines]);
   // Keep the latest callback reachable from the Monaco listener registered once on mount
   const editFocusRef = useRef(onEditFocus);
