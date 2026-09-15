@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { PYODIDE_VERSION } from './lib/pyodide'
+import { ensureMonaco } from './lib/editorAvailability'
 import './index.css'
 
 // Register the service worker under the deployed base path. The query string versions it:
@@ -18,6 +19,9 @@ if ('serviceWorker' in navigator) {
       });
   });
 }
+
+// Start fetching the editor chunk right away; cells show a plain editor until it is ready
+void ensureMonaco()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

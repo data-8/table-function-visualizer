@@ -476,3 +476,29 @@
   width: 3px !important;
   margin-left: 2px;
 }
+
+/* Plain editor used until Monaco has loaded, or instead of it when it cannot load */
+.code-fallback {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--editor-bg);
+  border: none;
+  outline: none;
+  resize: vertical;
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+@media (max-width: 768px) {
+  .code-fallback {
+    font-size: 16px; /* prevents iOS Safari from zooming on focus */
+    white-space: pre-wrap;
+  }
+}

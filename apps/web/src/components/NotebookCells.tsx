@@ -6,6 +6,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import type { PyodideOutput } from '../lib/pyodide';
+import { ensureMonaco } from '../lib/editorAvailability';
 import CellOutput from './CellOutput';
 import './NotebookCells.css';
 
@@ -67,6 +68,20 @@ export const RUN_SHORTCUT = `${IS_APPLE ? 'Cmd' : 'Ctrl'}+Enter`;
 
 /** Two-key chords (d d, i i, 0 0) must be completed within this window */
 const CHORD_MS = 800;
+
+/**
+ * Whether the bundled Monaco editor is usable: null while loading, false if it failed (older
+ * browsers), in which case cells use a plain textarea that still runs and highlights nothing.
+ */
+function useMonacoAvailable(): boolean | null {
+  const [available, setAvailable] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    ensureMonaco().then(ok => { if (alive) setAvailable(ok); });
+    return () => { alive = false; };
+  }, []);
+  return available;
+}
 
 /** iOS Safari zooms the page when focusing text below 16px, so use a larger editor font on phones */
 function useIsNarrowScreen(): boolean {
@@ -197,6 +212,8 @@ interface CodeCellProps {
   readOnly: boolean;
   /** Lines to mark as the source of the current visualization step */
   highlightLines: { start: number; end: number } | null;
+  /** false: render a plain textarea instead of Monaco (editor chunk unavailable or still loading) */
+  richEditor: boolean;
   onDelete: () => void;
   onInsertBelow: (type: CellType) => void;
   onMount: (editor: MonacoEditor.IStandaloneCodeEditor) => void;
@@ -219,6 +236,7 @@ function CodeCell({
   kernelAvailable,
   readOnly,
   highlightLines,
+  richEditor,
   onDelete,
   onInsertBelow,
   onMount,
@@ -314,6 +332,20 @@ function CodeCell({
             }
           }}
         >
+          {!richEditor ? (
+            <textarea
+              className="code-fallback"
+              value={cell.source}
+              onChange={(e) => onChange(e.target.value)}
+              onFocus={onEditFocus}
+              readOnly={isRunning || readOnly}
+              rows={Math.max(2, cell.source.split('\n').length)}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              aria-label="Code"
+            />
+          ) : (
           <Editor
             height={editorHeight}
             defaultLanguage="python"
@@ -364,6 +396,7 @@ function CodeCell({
               padding: { top: 10, bottom: 10 },
             }}
           />
+          )}
         </div>
       </div>
       {cell.output && <CellOutput key={cell.execCount ?? 0} output={cell.output} execCount={cell.execCount} />}
@@ -516,6 +549,7 @@ export default function NotebookCells({
   const [mountTick, setMountTick] = useState(0);
   const chordRef = useRef<{ key: string; at: number } | null>(null);
   const isNarrowScreen = useIsNarrowScreen();
+  const monacoAvailable = useMonacoAvailable();
   const anyRunning = runningCellId !== null;
 
   // Keep the selection valid as cells come and go
@@ -773,6 +807,7 @@ export default function NotebookCells({
             kernelAvailable={kernelAvailable}
             readOnly={readOnly}
             highlightLines={highlight && highlight.cellId === cell.id ? { start: highlight.start, end: highlight.end } : null}
+            richEditor={monacoAvailable === true}
             editorTheme={editorTheme}
             fontSize={isNarrowScreen ? 16 : 14}
             onEditorWillMount={onEditorWillMount}
